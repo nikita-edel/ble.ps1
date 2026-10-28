@@ -1,0 +1,10 @@
+bin/
+obj/
+out/
+*.user
+.vs/
+.vscode/
+__pycache__/
+*.pyc
+TestResults/
+testResults.xml

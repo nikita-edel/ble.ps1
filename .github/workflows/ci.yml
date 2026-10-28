@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.5 -Force -Scope CurrentUser -SkipPublisherCheck
+      - name: Build and test
+        shell: pwsh
+        run: ./build.ps1 -Test
+      - name: End-to-end (ConPTY)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install -r tests/e2e/requirements.txt
+          ./build.ps1 -E2E
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: ble
+          path: out/ble

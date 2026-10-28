@@ -1,0 +1,30 @@
+# My config, Nikita Edel
+
+ble-import keymap.vi
+
+bleopt prompt_vi_mode_indicator=
+
+ble-bind -m vi_imap --cursor 5
+ble-bind -m vi_nmap --cursor 2
+ble-bind -m vi_omap --cursor 4
+ble-bind -m vi_xmap --cursor 2
+ble-bind -m vi_smap --cursor 2
+
+ble-bind -m vi_imap -f Y -
+ble-bind -m vi_nmap -f Y -
+ble-bind -m vi_omap -f Y -
+ble-bind -m vi_xmap -f Y -
+ble-bind -m vi_smap -f Y -
+
+bleopt complete_auto_view=list
+bleopt complete_auto_view_maxlines=5          
+bleopt complete_auto_view_completion=word      
+bleopt complete_auto_view_selected=color      
+ble-face list_view_selected_color=fg=#ffff00,bold   
+
+bleopt complete_auto_view_ambiguous=1 
+bleopt complete_auto_delay=33         
+
+ble-bind -m vi_imap -f 'M-j' history-search-backward 
+ble-bind -m vi_imap -f 'M-k' history-search-forward   
+ble-bind -m vi_xmap -s 'Y' '" + y'
