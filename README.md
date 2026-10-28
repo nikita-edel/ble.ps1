@@ -4,15 +4,10 @@ A powershell 7.4+ line editor, based on [ble.sh](https://github.com/akinomyoga/b
 
 - Full support of the same ble.sh config: `Import-BleRc` (copy and paste your ble config),
 `bleopt`, `ble-face`, `ble-bind`, `ble-sabbrev`
-
-
 - Syntax highlighting with ble.shs colors. Unknown commands, bad parameters, unclosed quotes
   and missing paths show up while you type.
-
 - Suggestions from history and from powershell's completion, inline or as a list below the line.
-
 - Menu completion with fuzzy matching.
-
 - Emacs and vi modes, including visual block mode, macros, marks and `:` commands.
 
 
@@ -20,7 +15,11 @@ A powershell 7.4+ line editor, based on [ble.sh](https://github.com/akinomyoga/b
 
 You need powershelll 7.4 or later.
 
-Download the zip from [Releases](https://github.com/nikita-edel/ble.ps1/releases), extract it and run:
+[Powershell Gallery Link](https://www.powershellgallery.com/packages/ble)
+
+`Install-Module ble`
+
+Or download the zip from [Releases](https://github.com/nikita-edel/ble.ps1/releases), extract it and run:
 
 ```powershell
 pwsh -ExecutionPolicy Bypass -File .\install.ps1
@@ -34,23 +33,14 @@ cd ble.ps1
 ./build.ps1 -Install
 ```
 
-Then add this to your `$PROFILE`, after your prompt setup (starship, oh-my-posh):
+## Use and Configure
 
-```powershell
-Import-Module ble
-```
+Either put your configuration in a .blerc file or into your powershell config<br>
+`Import-Module ble` and `Import-BleRc <path to .blerc>` must be in your $PROFILE (powershell config)
 
-`ble-detach` switches back to PSReadLine, `ble-attach` turns ble.ps1 on again.
+`New-BleRc <path to new .blerc>` will copy a default profile (mine) and you can use that one to try it out
 
-## Configure
-
-Either put your configuration in either a .blerc file or into your powershell config<br>
-`Import-Module ble` and `Import-BleRc <path to .blerc>` must be present there
-
-`New-BleRc <path to new .blerc>` will copy a profile (mine) there and you can use that one to try it out
-
-Note: scince there is additions to functionality like the view=list it wont be backwards compatible<br>
-so you can have both a `ble.ps1` (that you source in your ps config) and a `.blerc` config
+Note: scince there is additions to functionality like the `bleopt complete_auto_view=list` it wont be backwards compatible to ble.sh<br>
 
 ```powershell
 bleopt default_keymap=vi                # vi mode
@@ -63,6 +53,8 @@ ble-bind -m vi_imap -f 'M-k' history-search-forward
 ```
 
 `bleopt` lists every option, `ble-face` every color, `ble-bind -P` every key binding.
+
+`ble-detach` switches back to PSReadLine, `ble-attach` turns ble.ps1 on again.
 
 ## Documentation
 
