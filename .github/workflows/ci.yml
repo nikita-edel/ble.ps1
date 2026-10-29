@@ -2,7 +2,19 @@ name: ci
 
 on:
   push:
+    # skipped when a push changes only these files (docs, wiki, notes)
+    paths-ignore: &no-tests
+      - '**.txt'
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
   pull_request:
+    paths-ignore: *no-tests
+
+# a newer push to the same branch stops the run that is still going
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
