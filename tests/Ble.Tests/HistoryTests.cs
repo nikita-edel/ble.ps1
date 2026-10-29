@@ -64,7 +64,7 @@ public class HistoryTests
         string? Best(string? dir, Func<string, bool>? valid = null, int max = 50) =>
             new HistoryRanking(h, dir, valid, max).Best(h.PrefixMatches("cd "));
         Assert.Equal("cd a", Best(@"C:\work\a"));
-        Assert.Equal("cd b", Best(@"C:\work\b\"));   // trailing separator
+        Assert.Equal("cd b", Best(@"C:\work\b" + Path.DirectorySeparatorChar));   // trailing separator
         Assert.Equal("cd c", Best(@"C:\elsewhere"));
         Assert.Equal("cd c", Best(null));
         // invalid entries are skipped, also the one from this directory
@@ -142,12 +142,14 @@ public class HistoryTests
         try
         {
             Directory.CreateDirectory(Path.Combine(dir, "real"));
-            var h = new Harness("cd .\\real", "git log", "cd .\\gone", "nosuchcmd x");
+            // ./real on Linux and macOS (a backslash is part of a file name there)
+            string real = "." + Path.DirectorySeparatorChar + "real", gone = "." + Path.DirectorySeparatorChar + "gone";
+            var h = new Harness("cd " + real, "git log", "cd " + gone, "nosuchcmd x");
             h.S.Cwd = dir;
             h.S.Commands["cd"] = CommandKind.Alias;
             Options.Set("complete_auto_history_validate", "command:path");
             h.Type("cd ");
-            Assert.Equal(".\\real", h.E.Suggestion);
+            Assert.Equal(real, h.E.Suggestion);
             h.Keys("C-u"); h.Type("n");
             Assert.Null(h.E.Suggestion);               // nosuchcmd is not a command
             Options.Set("complete_auto_history_validate", "path");
@@ -155,7 +157,7 @@ public class HistoryTests
             Assert.Equal("osuchcmd x", h.E.Suggestion);
             Options.Set("complete_auto_history_validate", "");
             h.Keys("C-u"); h.Type("cd ");
-            Assert.Equal(".\\gone", h.E.Suggestion);
+            Assert.Equal(gone, h.E.Suggestion);
         }
         finally { Directory.Delete(dir, true); }
     }

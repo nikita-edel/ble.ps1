@@ -128,6 +128,11 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
 - CI (`.github/workflows/ci.yml`) runs on GitHub's Windows/Linux/macOS runners. The first run
   failed only because an e2e test depended on installed modules (fixed: tests must not depend on
   the machine's modules or files; define what they need in `make_term(setup=...)`).
+- CI status (checked 2026-10-29 via the public API, `curl https://api.github.com/repos/nikita-edel/ble.ps1/actions/runs`):
+  Linux/macOS unit + Pester pass. **Windows "End-to-end (ConPTY)" has failed on every run since CI exists**
+  (~15 of 24 tests: typed text never appears, RET acts like a paste), while all 24 pass locally, also with
+  CI's pywinpty 3.1.2. Runner-specific, not a regression; unsolved. The step has `continue-on-error: true` (owner's choice) so CI stays green.
+- Unit tests run on Linux/macOS too: build paths with `Path.DirectorySeparatorChar` / `Path.Combine`
+  (a `\` is part of a file name there), not `.\x` literals.
 - Ideas not done yet: ble.sh contrib modules beyond fzf; more context completions (`M-~` user,
-  `M-@` host are n/a on Windows); a `build.ps1 -Uninstall` switch; Linux/macOS testing (CI exists
-  in `.github/workflows/ci.yml` but was never run); publishing to the PowerShell Gallery (see NOTES.md).
+  `M-@` host are n/a on Windows); a `build.ps1 -Uninstall` switch.
