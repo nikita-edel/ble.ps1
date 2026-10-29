@@ -311,4 +311,41 @@ public class ViTests
         m = h.E.BuildModel();
         Assert.Contains(m.Panels, p => p.PlainText == "-- VISUAL --");
     }
+
+    // A paste reaches the editor as keys that are all in the input buffer at once; the pauses make
+    // the editor wait, as it does between typed keys.
+    static string RunTerminal(Action<FakeTerminal> keys)
+    {
+        var h = new Harness().Vi();
+        keys(h.T);
+        h.E.Renderer.Begin(0);
+        try { return h.E.ReadLine(); }
+        catch (InputExhaustedException) { return h.E.Text; }   // the line was not accepted
+    }
+
+    [Fact]
+    public void PasteInNormalModeInsertsTheText()
+    {
+        // after the cursor, then back to normal mode (ble.sh vi-command/bracketed-paste)
+        Assert.Equal("echo hi there", RunTerminal(t => t.Type("echo hi").Keys("ESC").Pause().Type(" there").Pause().Pause().Keys("RET")));
+        // at the start of a line: before the cursor
+        Assert.Equal("hello world", RunTerminal(t => t.Type("world").Keys("ESC", "0").Pause().Type("hello ").Pause().Pause().Keys("RET")));
+        // newlines in the paste don't run the line; one undo step removes the paste
+        Assert.Equal("abc\nd", RunTerminal(t => t.Type("ab").Keys("ESC").Pause().Type("c").Keys("RET").Type("d").Pause().Pause()));
+        Assert.Equal("x", RunTerminal(t => t.Type("x").Keys("ESC").Pause().Type("dd and more").Pause().Pause().Type("u").Keys("RET")));
+    }
+
+    [Fact]
+    public void PasteInVisualModeReplacesTheSelection()
+    {
+        Assert.Equal("baz bar", RunTerminal(t => t.Type("foo bar").Keys("ESC", "0", "v", "e").Pause().Type("baz").Pause().Pause().Keys("RET")));
+    }
+
+    [Fact]
+    public void TypedKeysInNormalModeStayCommands()
+    {
+        // one key at a time is typing, and so are short bursts (two keys pressed at once)
+        Assert.Equal("ab", RunTerminal(t => t.Type("abc").Keys("ESC").Pause().Type("x").Pause().Keys("RET")));
+        Assert.Equal("", RunTerminal(t => t.Type("abc").Keys("ESC").Pause().Type("dd").Pause().Pause().Keys("RET")));
+    }
 }

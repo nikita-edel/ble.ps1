@@ -29,6 +29,12 @@ normal mode). Hide it with `bleopt keymap_vi_mode_show=`. The cursor shape chang
 
 In visual block mode, `I`, `A` and `c` repeat what you type on every line of the block.
 
+Pasting from the terminal (`Ctrl+V`, right click) in normal mode inserts the text after the cursor
+and stays in normal mode, as in ble.sh. In visual or select mode the paste replaces the selection.
+Windows doesn't tell programs that keys come from a paste, so ble.ps1 goes by timing: three or more
+keys that arrive at the same moment are a paste. Pasting one or two characters in normal mode still
+runs them as commands.
+
 ## Ex commands
 
 `:s/pat/rep/g` with ranges `%`, `N,M`, `'<,'>`, `'a`; `:d`, `:y`, `:j`, `:>`, `:<`, `:normal`,

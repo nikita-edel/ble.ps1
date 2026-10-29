@@ -4,9 +4,8 @@ ble.ps1 is a ble.sh clone for PowerShell 7.4+: a C# line editor (binary module) 
 PowerShell module. It replaces `PSConsoleHostReadLine`. Goal set by the owner: **behave like
 ble.sh 1:1** (bindings, faces/colors, highlighting rules), adapted to PowerShell where bash
 concepts don't exist. README.md is deliberately short; user documentation lives in `wiki/` (the source of the GitHub
-wiki, published by the owner; see NOTES.md). Document user-facing changes there, in plain
+wiki, published by the owner). Document user-facing changes there, in plain
 language (the owner does not want docs that read as AI-generated).
-NOTES.md is the owner's personal notes (install, config, keys); keep it updated for user-facing changes.
 
 ## Build / test / install
 
@@ -76,6 +75,10 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
   raw strings `r'''...'''` in Python), or use the Edit tool. After a scripted edit, grep the
   result for `\\`, `\n` and `'\'`. The same happens to `sed -i` replacements and quoted
   `python - <<'EOF'` heredocs that contain `\\`.
+- Bracketed paste doesn't work on Windows: conhost drops `ESC[200~`/`ESC[201~` before `ReadKey`,
+  even after `ESC[?2004h` (checked in ConPTY). Pastes are recognized as bursts instead (keys
+  available at once after the editor idled): `TakeViPaste` in ViExtra.cs, and `edit_paste_newline`
+  for RET. FakeTerminal: keys queued without `<pause>` count as one burst.
 - PowerShell's host already moves the prompt to a new line after `-NoNewline` output, so
   ble.sh's `prompt_eol_mark` cannot be detected (checked in ConPTY); the option is accepted only.
 - `.blerc` support (`BleRc.cs`) expands words when a command runs, not while lexing, so `$VAR`

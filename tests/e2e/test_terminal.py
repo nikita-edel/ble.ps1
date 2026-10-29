@@ -161,6 +161,19 @@ def test_vi_mode(make_term):
     t.wait_prompt()
 
 
+def test_vi_paste_in_normal_mode(make_term):
+    t = make_term(setup="bleopt default_keymap=vi; ")
+    t.type("echo hi")
+    t.keys("ESC")
+    t.settle()
+    t.send(" there; echo pasted")   # all at once, like a paste: inserted, not run as vi commands
+    t.settle(0.6)
+    assert t.line_at_cursor() == "PS> echo hi there; echo pasted"
+    t.keys("RET")
+    t.wait_text("pasted\n")
+    t.wait_prompt()
+
+
 def test_wide_characters(term):
     term.type("Write-Output '日本語テキスト'")
     term.settle()

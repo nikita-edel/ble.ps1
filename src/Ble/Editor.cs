@@ -111,7 +111,8 @@ public sealed partial class Editor
             while (!Done)
             {
                 var k = NextKey();
-                ProcessKey(k);
+                if (TakeViPaste(k) is { } pasted) ViPaste(pasted);
+                else ProcessKey(k);
                 if (!Done && !InputPending())
                 {
                     UpdateSuggestion();
@@ -132,8 +133,11 @@ public sealed partial class Editor
     /// <summary>Pushes a key to be processed before reading from the terminal.</summary>
     public void PushKey(KeyInput k) => _keyQueue.Enqueue(k);
 
+    bool _keyAfterIdle;   // the last key from NextKey came while the editor was waiting for input
+
     KeyInput NextKey()
     {
+        _keyAfterIdle = false;
         if (_keyQueue.Count > 0) return _keyQueue.Dequeue();
         while (true)
         {
@@ -143,6 +147,7 @@ public sealed partial class Editor
                 if (k != null) return k.Value;
                 continue;
             }
+            _keyAfterIdle = true;
             int w = Term.Width;
             if (w != Renderer.Width)
             {

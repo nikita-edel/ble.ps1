@@ -260,6 +260,67 @@ public sealed partial class Editor
         }
     }
 
+    // ---- pasting from the terminal in normal / visual mode ----
+    // ble.sh gets pastes as bracketed paste. Windows consoles drop those markers before ReadKey, so a
+    // paste is recognized by its keys: they are in the input buffer all at once, while typed keys come
+    // one at a time. Without this, "echo hi" pasted in normal mode runs e, c, h, ... as commands.
+
+    const int PasteMinKeys = 3;
+
+    /// <summary>If k starts a paste in a vi command mode, reads the rest and returns the pasted text.</summary>
+    string? TakeViPaste(KeyInput k)
+    {
+        if (!_keyAfterIdle || Keymap is not ("vi_nmap" or "vi_xmap" or "vi_smap") || Modal != null || !Term.KeyAvailable) return null;
+        var keys = new List<KeyInput> { k };
+        while (true)
+        {
+            while (Term.KeyAvailable)
+                if (KeyNames.FromConsoleKey(Term.ReadKey()) is { } next) keys.Add(next);
+            // a long paste can arrive in pieces
+            Term.Wait(5);
+            if (!Term.KeyAvailable) break;
+        }
+        var sb = new System.Text.StringBuilder();
+        foreach (var key in keys)
+        {
+            if (key.Name is "RET" or "C-m" or "C-j") sb.Append('\n');
+            else if (key.Name is "TAB" or "C-i") sb.Append('\t');
+            else if (key.IsPrintable) sb.Append(key.Name == "SP" ? " " : key.Name);
+            else { sb = null; break; }
+        }
+        if (sb != null && keys.Count >= PasteMinKeys) return sb.ToString();
+        // not a paste (or too short to tell): the keys run as usual
+        for (int i = 1; i < keys.Count; i++) _keyQueue.Enqueue(keys[i]);
+        return null;
+    }
+
+    /// <summary>ble.sh vi-command/bracketed-paste: normal mode inserts the text after the cursor (before
+    /// it at the start of a line) and goes back to normal mode; visual and select mode replace the
+    /// selection; with an operator pending, the operator is cancelled.</summary>
+    void ViPaste(string text)
+    {
+        _lastKeyTime = Term.Now;
+        Info = null;
+        _pending.Clear();
+        bool countOnly = _viKeys.All(x => x.Name.Length == 1 && char.IsDigit(x.Name[0]));
+        _viKeys.Clear();   // ble.sh discards the count
+        if (!countOnly) { Bell(); ApplyCursorShape(); return; }
+        if (Keymap is "vi_xmap" or "vi_smap")
+        {
+            if (Keymap == "vi_smap") SetKeymap("vi_xmap");
+            ViKey(KeyInput.FromName("c"));
+            if (Keymap != "vi_imap") return;
+        }
+        else
+        {
+            int pos = Point == LineStart(Point) ? Point : Math.Min(Point + 1, LineEnd(Point));
+            ViEnterInsert(pos, 1, (Text, Point));
+        }
+        Insert(text);
+        ViLeaveInsert();
+        ApplyCursorShape();
+    }
+
     /// <summary>Pastes a register at the cursor (handles charwise, linewise and blockwise registers).</summary>
     void PasteRegister(Register r, bool before, int count)
     {
