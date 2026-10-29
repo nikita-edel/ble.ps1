@@ -28,3 +28,7 @@ bleopt complete_auto_delay=33
 ble-bind -m vi_imap -f 'M-j' history-search-backward 
 ble-bind -m vi_imap -f 'M-k' history-search-forward   
 ble-bind -m vi_xmap -s 'Y' '" + y'
+
+# which history entry is suggested (ble.ps1)
+bleopt complete_auto_history_cwd=1                  # commands run in the current folder first
+bleopt complete_auto_history_validate=command:path  # skip entries whose command or path doesn't exist here ('' = off, 'path' = only paths)
