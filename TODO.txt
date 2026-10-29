@@ -1,5 +1,0 @@
-add a way to Publish the powershell module automatically:
-maybe with a .env file with the api key? and a script that builds and publishes it?
-before publishing it asks fo a confirmation and some details about he new package just in case
-
-but the command also does -Package Release so i can grab the zip to github
