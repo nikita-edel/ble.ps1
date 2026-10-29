@@ -96,6 +96,16 @@ and want the default to follow, copy it over `module/default.blerc` again.
 | `Ctrl+R` / `Ctrl+S` | incremental history search (press again for the next match) |
 | `"+y`, `"+p`, visual `Y` (your config) | copy to / paste from the system clipboard |
 
+**Which history entry is suggested** (both on by default):
+
+- `bleopt complete_auto_history_cwd=1`: commands you ran in the current folder win over newer
+  ones from elsewhere. The folders are stored in `ConsoleHost_history.txt.dirs` next to the
+  history file, starting from now (older entries have no folder).
+- `bleopt complete_auto_history_validate=command:path`: entries with a command or a path that
+  doesn't exist here are skipped. A word is a path if it looks like one, or if it was a file or
+  folder where the command ran (`cd dev` from `~` isn't suggested in `~\dev`). `path` alone
+  checks only paths; empty turns it off. The rules are listed in `src/Ble/HistoryRanking.cs`.
+
 ## Behavior that changed to match ble.sh (Oct 2026)
 
 - **Enter in a multi-line buffer** inserts a newline (ble.sh `accept-single-line-or-newline`);

@@ -83,22 +83,20 @@ public sealed partial class Editor
         _listCompletionPending = ListSource("completion");
     }
 
-    /// <summary>History entries for the list view: prefix matches first, then substring matches, newest first.</summary>
+    /// <summary>History entries for the list view: prefix matches first, then substring matches,
+    /// each group ordered by HistoryRanking.</summary>
     List<ListEntry> SearchListView(string query, int max)
     {
-        var prefix = new List<ListEntry>();
-        var sub = new List<ListEntry>();
         var cmp = History.SmartCase(query);
-        for (int i = History.Count - 1; i >= 0 && prefix.Count < max; i--)
+        var rank = NewHistoryRanking(HistoryRanking.ListChecks);
+        IEnumerable<string> Newest()
         {
-            var h = History[i];
-            if (h == query) continue;
-            if (h.StartsWith(query, cmp)) prefix.Add(new ListEntry(h, "History"));
-            else if (sub.Count < max && h.Contains(query, cmp)) sub.Add(new ListEntry(h, "History"));
+            for (int i = History.Count - 1; i >= 0; i--)
+                if (History[i] != query) yield return History[i];
         }
-        prefix.AddRange(sub);
-        if (prefix.Count > max) prefix.RemoveRange(max, prefix.Count - max);
-        return prefix;
+        var prefix = rank.Top(Newest().Where(h => h.StartsWith(query, cmp)), max);
+        var sub = rank.Top(Newest().Where(h => !h.StartsWith(query, cmp) && h.Contains(query, cmp)), max - prefix.Count);
+        return prefix.Concat(sub).Select(h => new ListEntry(h, "History")).ToList();
     }
 
     /// <summary>Idle task: adds TabExpansion2 results (files, parameters ...) to the list.</summary>

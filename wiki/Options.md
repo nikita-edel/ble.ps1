@@ -28,6 +28,8 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 |---|---|---|
 | `complete_auto_complete` | `1` | Suggestions at all |
 | `complete_auto_history` | `1` | Suggestions from history |
+| `complete_auto_history_cwd` | `1` | Prefer history entries you ran in the current folder |
+| `complete_auto_history_validate` | `command:path` | Skip history entries with a command or path that doesn't exist (empty: off) |
 | `complete_auto_completion` | `1` | Suggestions from PowerShell's completion |
 | `complete_auto_delay` | `100` | Milliseconds of idle time before completion results appear |
 | `complete_auto_complete_opts` | | `history-disabled`: no history suggestions |

@@ -29,6 +29,8 @@ public sealed class Harness
         Editor.Registers.Clear();
         Options.Set("edit_paste_newline", "0");
         Options.Set("complete_auto_completion", "0");
+        // the fake shell knows few commands; tests of these options turn them back on
+        Options.Set("complete_auto_history_validate", "");
     }
 
     public string Text => E.Text;

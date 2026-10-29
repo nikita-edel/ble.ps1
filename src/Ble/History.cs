@@ -6,17 +6,26 @@ namespace Ble;
 /// <summary>
 /// Command history. Entries are kept unique (most recent occurrence wins), oldest first.
 /// The on-disk format is PSReadLine's: one entry per line, embedded newlines written as "`\n".
+/// The directories each entry ran in (ble.ps1, for complete_auto_history_cwd) don't fit in that
+/// format; they go to "&lt;history file&gt;.dirs", one "directory TAB entry" record per line, the
+/// entry escaped the same way.
 /// </summary>
 public sealed class History
 {
     const char Sep = '\u0001';
+    const int MaxDirsPerEntry = 16;
 
     readonly List<string> _items = new();
     string? _blob;          // Sep + newest + Sep + ... + oldest + Sep
     int[]? _offsets;        // start offset in _blob of k-th newest entry
     long _knownSize;
+    readonly Dictionary<string, List<string>> _dirs = new(StringComparer.Ordinal);   // entry -> directories, most recent last
+    long _knownDirsSize;
+
+    static readonly StringComparer DirComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     public string? FilePath { get; private set; }
+    public string? DirsFilePath => FilePath == null ? null : FilePath + ".dirs";
     public int MaxSize { get; set; } = 10000;
     public IReadOnlyList<string> Items => _items;
     public int Count => _items.Count;
@@ -25,6 +34,7 @@ public sealed class History
     public void Clear()
     {
         _items.Clear();
+        _dirs.Clear();
         Invalidate();
     }
 
@@ -64,17 +74,67 @@ public sealed class History
     public void Load(string? path)
     {
         _items.Clear();
+        _dirs.Clear();
         Invalidate();
         FilePath = string.IsNullOrEmpty(path) ? null : path;
         _knownSize = 0;
+        _knownDirsSize = 0;
         if (FilePath == null) return;
         try
         {
-            if (!File.Exists(FilePath)) return;
-            var bytes = ReadShared(FilePath, 0, out _knownSize);
-            AddRange(Parse(Encoding.UTF8.GetString(bytes)));
+            if (File.Exists(FilePath))
+            {
+                var bytes = ReadShared(FilePath, 0, out _knownSize);
+                AddRange(Parse(Encoding.UTF8.GetString(bytes)));
+            }
         }
         catch { }
+        try
+        {
+            if (!File.Exists(DirsFilePath)) return;
+            var bytes = ReadShared(DirsFilePath!, 0, out _knownDirsSize);
+            int records = ParseDirs(Encoding.UTF8.GetString(bytes));
+            // the file only grows; drop records of entries that left the history once it gets big
+            if (records > 2 * Math.Max(MaxSize, 1000)) RewriteDirs();
+        }
+        catch { }
+    }
+
+    int ParseDirs(string content)
+    {
+        int n = 0;
+        foreach (var rec in Parse(content))
+        {
+            int tab = rec.IndexOf('\t');
+            if (tab <= 0) continue;
+            NoteDir(rec.Substring(tab + 1), rec.Substring(0, tab));
+            n++;
+        }
+        return n;
+    }
+
+    static string NormalizeDir(string dir) => Path.TrimEndingDirectorySeparator(dir);
+
+    void NoteDir(string entry, string dir)
+    {
+        dir = NormalizeDir(dir);
+        if (!_dirs.TryGetValue(entry, out var list)) _dirs[entry] = list = new List<string>(1);
+        int i = list.FindIndex(d => DirComparer.Equals(d, dir));
+        if (i >= 0) list.RemoveAt(i);
+        list.Add(dir);
+        if (list.Count > MaxDirsPerEntry) list.RemoveAt(0);
+    }
+
+    /// <summary>The directories the entry ran in (the last 16, most recent last), or null.</summary>
+    public IReadOnlyList<string>? DirsOf(string entry) => _dirs.TryGetValue(entry, out var list) ? list : null;
+
+    /// <summary>Whether the entry was run in this directory (one of the last 16 it ran in).</summary>
+    public bool RanIn(string entry, string dir)
+    {
+        if (!_dirs.TryGetValue(entry, out var list)) return false;
+        dir = NormalizeDir(dir);
+        foreach (var d in list) if (DirComparer.Equals(d, dir)) return true;
+        return false;
     }
 
     static byte[] ReadShared(string path, long from, out long length)
@@ -119,16 +179,28 @@ public sealed class History
             var fi = new FileInfo(FilePath);
             if (!fi.Exists) return;
             if (fi.Length < _knownSize) { Load(FilePath); return; }
-            if (fi.Length == _knownSize) return;
-            var bytes = ReadShared(FilePath, _knownSize, out var len);
-            _knownSize = len;
-            AddRange(Parse(Encoding.UTF8.GetString(bytes)));
+            if (fi.Length != _knownSize)
+            {
+                var bytes = ReadShared(FilePath, _knownSize, out var len);
+                _knownSize = len;
+                AddRange(Parse(Encoding.UTF8.GetString(bytes)));
+            }
+        }
+        catch { }
+        try
+        {
+            var di = new FileInfo(DirsFilePath!);
+            if (!di.Exists || di.Length == _knownDirsSize) return;
+            long from = di.Length < _knownDirsSize ? 0 : _knownDirsSize;   // rewritten by another session
+            var bytes = ReadShared(DirsFilePath!, from, out var len);
+            _knownDirsSize = len;
+            ParseDirs(Encoding.UTF8.GetString(bytes));
         }
         catch { }
     }
 
-    /// <summary>Records an accepted line. Returns false if it was ignored.</summary>
-    public bool Add(string line)
+    /// <summary>Records an accepted line, and the directory it runs in. Returns false if it was ignored.</summary>
+    public bool Add(string line, string? dir = null)
     {
         line = line.Replace("\r\n", "\n");
         if (line.Trim().Length == 0) return false;
@@ -143,27 +215,33 @@ public sealed class History
         _items.Add(line);
         if (_items.Count > MaxSize) _items.RemoveRange(0, _items.Count - MaxSize);
         Invalidate();
-        if (save) Append(line);
+        // a tab or newline in the directory would break the record format
+        if (dir != null && dir.IndexOfAny(['\t', '\n', '\r']) >= 0) dir = null;
+        if (dir != null) NoteDir(line, dir);
+        if (save && FilePath != null)
+        {
+            Append(FilePath, Serialize(line), ref _knownSize);
+            if (dir != null) Append(DirsFilePath!, Serialize(NormalizeDir(dir) + "\t" + line), ref _knownDirsSize);
+        }
         return true;
     }
 
-    void Append(string line)
+    static void Append(string path, string record, ref long knownSize)
     {
-        if (FilePath == null) return;
-        var data = Encoding.UTF8.GetBytes(Serialize(line) + Environment.NewLine);
+        var data = Encoding.UTF8.GetBytes(record + Environment.NewLine);
         for (int attempt = 0; attempt < 5; attempt++)
         {
             try
             {
-                var dir = Path.GetDirectoryName(FilePath);
+                var dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                bool wasUpToDate = File.Exists(FilePath) ? new FileInfo(FilePath).Length == _knownSize : _knownSize == 0;
-                using (var fs = new FileStream(FilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                bool wasUpToDate = File.Exists(path) ? new FileInfo(path).Length == knownSize : knownSize == 0;
+                using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
                 {
                     fs.Write(data, 0, data.Length);
                 }
                 // Only skip over our own write if we had already seen everything before it.
-                if (wasUpToDate) _knownSize = new FileInfo(FilePath).Length;
+                if (wasUpToDate) knownSize = new FileInfo(path).Length;
                 return;
             }
             catch (IOException) { Thread.Sleep(10); }
@@ -190,6 +268,26 @@ public sealed class History
         using (var fs = new FileStream(FilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
             fs.Write(data, 0, data.Length);
         _knownSize = data.Length;
+        RewriteDirs();
+    }
+
+    /// <summary>Replaces the .dirs file with the directories of the entries in memory.</summary>
+    void RewriteDirs()
+    {
+        if (DirsFilePath == null) return;
+        try
+        {
+            var sb = new StringBuilder();
+            foreach (var e in _items)
+                if (_dirs.TryGetValue(e, out var list))
+                    foreach (var d in list) sb.Append(Serialize(d + "\t" + e)).Append(Environment.NewLine);
+            if (sb.Length == 0 && !File.Exists(DirsFilePath)) return;
+            var data = Encoding.UTF8.GetBytes(sb.ToString());
+            using (var fs = new FileStream(DirsFilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                fs.Write(data, 0, data.Length);
+            _knownDirsSize = data.Length;
+        }
+        catch { }
     }
 
     void BuildBlob()
@@ -207,10 +305,13 @@ public sealed class History
     }
 
     /// <summary>Most recent entry that starts with prefix and is longer than it.</summary>
-    public string? FindPrefix(string prefix)
+    public string? FindPrefix(string prefix) => PrefixMatches(prefix).FirstOrDefault();
+
+    /// <summary>Entries that start with prefix and are longer than it, newest first.</summary>
+    public IEnumerable<string> PrefixMatches(string prefix)
     {
-        if (prefix.Length == 0 || _items.Count == 0) return null;
-        if (prefix.IndexOf(Sep) >= 0) return null;
+        if (prefix.Length == 0 || _items.Count == 0) yield break;
+        if (prefix.IndexOf(Sep) >= 0) yield break;
         if (_blob == null) BuildBlob();
         var blob = _blob!;
         var needle = Sep + prefix;
@@ -218,11 +319,11 @@ public sealed class History
         while (true)
         {
             int idx = blob.IndexOf(needle, from, StringComparison.Ordinal);
-            if (idx < 0) return null;
+            if (idx < 0) yield break;
             int start = idx + 1;
             int end = blob.IndexOf(Sep, start + prefix.Length);
-            if (end < 0) return null;
-            if (end - start > prefix.Length) return blob.Substring(start, end - start);
+            if (end < 0) yield break;
+            if (end - start > prefix.Length) yield return blob.Substring(start, end - start);
             from = end;
         }
     }

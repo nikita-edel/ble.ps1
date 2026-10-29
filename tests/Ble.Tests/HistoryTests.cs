@@ -55,6 +55,144 @@ public class HistoryTests
     }
 
     [Fact]
+    public void RankingPrefersTheDirectoryAndSkipsInvalid()
+    {
+        var h = new History();
+        h.Add("cd a", @"C:\work\a");
+        h.Add("cd b", @"C:\work\b");
+        h.Add("cd c");
+        string? Best(string? dir, Func<string, bool>? valid = null, int max = 50) =>
+            new HistoryRanking(h, dir, valid, max).Best(h.PrefixMatches("cd "));
+        Assert.Equal("cd a", Best(@"C:\work\a"));
+        Assert.Equal("cd b", Best(@"C:\work\b\"));   // trailing separator
+        Assert.Equal("cd c", Best(@"C:\elsewhere"));
+        Assert.Equal("cd c", Best(null));
+        // invalid entries are skipped, also the one from this directory
+        Assert.Equal("cd b", Best(@"C:\work\a", l => l != "cd a" && l != "cd c"));
+        Assert.Null(Best(@"C:\work\a", _ => false));
+        // validation runs for at most maxChecks entries
+        int calls = 0;
+        Assert.Null(Best(null, _ => { calls++; return false; }, max: 2));
+        Assert.Equal(2, calls);
+        if (OperatingSystem.IsWindows()) Assert.True(h.RanIn("cd a", @"c:\WORK\A"));
+
+        // Top: this directory first, then newest first; a full list still takes entries from here
+        var top = new HistoryRanking(h, @"C:\work\a", null, 50).Top(h.PrefixMatches("cd "), 2);
+        Assert.Equal(new[] { "cd a", "cd c" }, top);
+    }
+
+    [Fact]
+    public void WordsThatWerePathsWhereTheEntryRanMustExistHere()
+    {
+        var home = Directory.CreateTempSubdirectory("ble-test-").FullName;
+        try
+        {
+            var dev = Directory.CreateDirectory(Path.Combine(home, "dev")).FullName;
+            var h = new Harness();
+            h.S.Commands["cd"] = CommandKind.Alias;
+            h.H.Add("cd dev", home);                       // dev was a directory where it ran
+            h.H.Add("git checkout origin/main", home);     // origin/main was never a path
+            Options.Set("complete_auto_history_validate", "command:path");
+            h.S.Cwd = dev;
+            h.Type("cd ");
+            Assert.Null(h.E.Suggestion);                   // ~\dev\dev doesn't exist
+            h.Keys("C-u"); h.Type("git ");
+            Assert.Equal("checkout origin/main", h.E.Suggestion);
+            h.S.Cwd = home;
+            h.E.Highlighter.ResetCaches();
+            h.Keys("C-u"); h.Type("cd ");
+            Assert.Equal("dev", h.E.Suggestion);
+        }
+        finally { Directory.Delete(home, true); }
+    }
+
+    [Fact]
+    public void DirectoriesAreSavedSharedAndRewritten()
+    {
+        Harness.ResetGlobals();
+        var path = Path.Combine(Path.GetTempPath(), "ble-test-" + Guid.NewGuid() + ".txt");
+        try
+        {
+            var h1 = new History(); h1.Load(path);
+            h1.Add("make", @"C:\proj");
+            h1.Add("multi\nline", @"C:\proj");
+            h1.Add("my token is x", @"C:\proj");     // memory only, also its directory
+            var h2 = new History(); h2.Load(path);
+            Assert.True(h2.RanIn("make", @"C:\proj"));
+            Assert.True(h2.RanIn("multi\nline", @"C:\proj"));
+            Assert.DoesNotContain("token", File.ReadAllText(path + ".dirs"));
+            h1.Add("make", @"C:\other");
+            h2.Sync();
+            Assert.True(h2.RanIn("make", @"C:\other"));
+            Assert.True(h2.RanIn("make", @"C:\proj"));
+            // Rewrite (ble-history -d, Clear-BleHistory) drops the directories of removed entries
+            h2.RemoveRange(h2.Items.ToList().IndexOf("multi\nline"), 1);
+            h2.Rewrite();
+            Assert.DoesNotContain("multi", File.ReadAllText(path + ".dirs"));
+            var h3 = new History(); h3.Load(path);
+            Assert.True(h3.RanIn("make", @"C:\other"));
+        }
+        finally { File.Delete(path); File.Delete(path + ".dirs"); }
+    }
+
+    [Fact]
+    public void SuggestionsSkipUnknownCommandsAndMissingPaths()
+    {
+        var dir = Directory.CreateTempSubdirectory("ble-test-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "real"));
+            var h = new Harness("cd .\\real", "git log", "cd .\\gone", "nosuchcmd x");
+            h.S.Cwd = dir;
+            h.S.Commands["cd"] = CommandKind.Alias;
+            Options.Set("complete_auto_history_validate", "command:path");
+            h.Type("cd ");
+            Assert.Equal(".\\real", h.E.Suggestion);
+            h.Keys("C-u"); h.Type("n");
+            Assert.Null(h.E.Suggestion);               // nosuchcmd is not a command
+            Options.Set("complete_auto_history_validate", "path");
+            h.Keys("C-u"); h.Type("n");
+            Assert.Equal("osuchcmd x", h.E.Suggestion);
+            Options.Set("complete_auto_history_validate", "");
+            h.Keys("C-u"); h.Type("cd ");
+            Assert.Equal(".\\gone", h.E.Suggestion);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void SuggestionsPreferTheCurrentDirectory()
+    {
+        var h = new Harness();
+        h.H.Add("build here", @"C:\proj");
+        h.H.Add("build elsewhere", @"C:\other");
+        h.S.Cwd = @"C:\proj";
+        h.Type("build ");
+        Assert.Equal("here", h.E.Suggestion);
+        Options.Set("complete_auto_history_cwd", "0");
+        h.Keys("C-u"); h.Type("build ");
+        Assert.Equal("elsewhere", h.E.Suggestion);
+
+        Options.Set("complete_auto_history_cwd", "1");
+        Options.Set("complete_auto_view", "list");
+        h.H.Add("build again", @"C:\other");
+        h.H.Add("rebuild", @"C:\proj");
+        h.Keys("C-u"); h.Type("build");
+        // this directory first in each group (prefix matches, then substring matches)
+        Assert.Equal(new[] { "build here", "build again", "build elsewhere", "rebuild" }, h.E.ListViewItems);
+    }
+
+    [Fact]
+    public void ListViewLeavesOutInvalidEntries()
+    {
+        var h = new Harness("git status", "nosuchcmd git", "git log");
+        Options.Set("complete_auto_history_validate", "command:path");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git");
+        Assert.Equal(new[] { "git log", "git status" }, h.E.ListViewItems);
+    }
+
+    [Fact]
     public void UpDownNavigatesAndKeepsEdits()
     {
         var h = new Harness("one", "two", "three");

@@ -28,7 +28,7 @@ NOTES.md is the owner's personal notes (install, config, keys); keep it updated 
 - Python deps for e2e: `pip install -r tests/e2e/requirements.txt` (installed already).
 - fzf is installed via winget at `~/AppData/Local/Microsoft/WinGet/Links`. That directory may be
   missing from PATH in an existing shell; the fzf e2e test skips if fzf isn't found.
-- Expected state: all green (194 unit, 28 Pester, 24 e2e). Always run `-Test` (and `-E2E` for
+- Expected state: all green (200 unit, 28 Pester, 24 e2e). Always run `-Test` (and `-E2E` for
   rendering/terminal changes) before committing.
 - Debugging tools: `python tests/e2e/probe.py "text" "k:TAB" "k:RET"` drives a -NoProfile session
   and prints the screen. `python tests/e2e/probe_profile.py "text"` uses the owner's REAL profile
@@ -49,7 +49,12 @@ src/Ble/ListView.cs     PSReadLine-like list view of history matches (bleopt com
 src/Ble/BleRc.cs        Import-BleRc: .blerc reader (bash subset: lexer, parser, executor) + BleModules (ble-import built-ins)
 src/Ble/Vi.cs           vi parser (ViKey/ViParse/ViMotion/ViOperator/ViSimple/ViVisual), registers, dot-repeat
 src/Ble/ViExtra.cs      block visual, q/@ macros, marks, ex (:) commands, select mode (vi_smap)
-src/Ble/Highlighter.cs  token/AST highlighting with ble.sh rules (see class doc comment)
+src/Ble/Highlighter.cs  token/AST highlighting with ble.sh rules (see class doc comment); IsValid = command/path
+                        checks for history suggestions (+ words that were paths where the entry ran)
+src/Ble/History.cs      PSReadLine-format history + "<file>.dirs" (dir TAB entry): RanIn, DirsOf
+src/Ble/HistoryRanking.cs  ALL rules for which history entries are suggested (inline Best, list view Top):
+                        validate -> current dir first -> newest. Options are read in Editor.NewHistoryRanking.
+                        No per-command special cases (the owner rejected a hardcoded cd list).
 src/Ble/PromptSequences.cs  \u \w \q{...} expansion, status line
 src/Ble/Fzf.cs          optional fzf widgets + ** completion trigger (FzfRunner hook for tests)
 src/Ble/Renderer.cs     relative-cursor ANSI drawing, explicit row breaks, resize estimate
@@ -84,6 +89,8 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
   pipeline thread, so it can't be made async; `Editor.CompleteAt` caches per line and passes a
   cancel callback for idle work (PowerShell.BeginStop from a timer; script completers stop, the
   filesystem completer does not). Measure with `tests/perf/bench.ps1` before and after changes.
+- The harness turns `complete_auto_history_validate` off (FakeShell knows few commands); tests of it set it
+  and add commands to `S.Commands` (e.g. `cd`).
 - Static global state (Options, Faces, Keymaps, KillRing, Abbrevs, Registers, Macros,
   UserWidgets) is reset by `Harness.ResetGlobals()`. Test parallelization is disabled
   (assembly attribute in Fakes.cs). The harness also turns off `edit_paste_newline` and

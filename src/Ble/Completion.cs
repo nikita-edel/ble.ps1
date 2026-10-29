@@ -461,12 +461,22 @@ public sealed partial class Editor
         // with the list view only the " [correction] " form is shown inline (complete_auto_view_ambiguous)
         if (!ListViewEnabled && Options.GetBool("complete_auto_history") && !HasAutoOpt("history-disabled"))
         {
-            var h = History.FindPrefix(Text);
+            var h = NewHistoryRanking(HistoryRanking.InlineChecks).Best(History.PrefixMatches(Text));
             if (h != null) _suggest = h.Substring(Text.Length);
         }
         if (_suggest == null && Options.GetBool("complete_auto_completion") && !char.IsWhiteSpace(Text[^1]))
             _completionSuggestPending = true;
         ScheduleAutoMenu();
+    }
+
+    // HistoryRanking with the options: complete_auto_history_cwd, complete_auto_history_validate
+    HistoryRanking NewHistoryRanking(int maxChecks)
+    {
+        var dir = Options.GetBool("complete_auto_history_cwd") ? Shell.CurrentDirectory : null;
+        var v = Options.Get("complete_auto_history_validate").Split(':');
+        bool commands = v.Contains("command"), paths = v.Contains("path");
+        Func<string, bool>? valid = commands || paths ? line => Highlighter.IsValid(line, commands, paths, History.DirsOf(line)) : null;
+        return new HistoryRanking(History, dir, valid, maxChecks);
     }
 
     void ScheduleAutoMenu()

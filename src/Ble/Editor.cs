@@ -191,7 +191,7 @@ public sealed partial class Editor
         }
         if (!string.IsNullOrWhiteSpace(Result) && FinalSuffix == null)
         {
-            History.Add(Result!);
+            History.Add(Result!, Shell.CurrentDirectory);
             Session.MarkExecStart(Result!, this);
         }
     }

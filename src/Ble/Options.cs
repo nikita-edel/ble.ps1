@@ -17,6 +17,8 @@ public static class Options
         ["highlight_incomplete"] = "1",          // mark unclosed strings and brackets as errors (ble.ps1)
         ["complete_auto_complete"] = "1",        // inline suggestions
         ["complete_auto_history"] = "1",         // suggestions from history
+        ["complete_auto_history_cwd"] = "1",     // ble.ps1: prefer history entries that ran in the current directory
+        ["complete_auto_history_validate"] = "command:path",   // ble.ps1: skip history entries with unknown commands / missing paths ('' = off)
         ["complete_auto_completion"] = "1",      // suggestions from TabExpansion2 when idle
         ["complete_auto_delay"] = "100",         // ms idle before completion-based suggestions (ble.sh: 1; a key press stops a running completion)
         ["complete_auto_menu"] = "",             // ms idle before showing the menu ('' = off)

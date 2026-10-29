@@ -7,6 +7,9 @@ one history. Set another file with `bleopt history_file=...`.
 - Commands starting with a space are not saved (`history_ignore_space`).
 - Commands that look like secrets (`password`, `token`, `apikey`, ...) stay in memory and are not
   written to the file (`history_ignore_pattern`).
+- The folder each command ran in goes to a second file, `<history file>.dirs`, which suggestions
+  use to prefer commands from the current folder (see
+  [Completion and Suggestions](Completion-and-Suggestions)). PSReadLine ignores that file.
 
 ## Searching
 

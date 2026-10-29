@@ -21,6 +21,31 @@ PS> ls .local/bn [.local/bin]
 
 Accepting it replaces the word.
 
+### Which history entry is suggested
+
+ble.sh suggests the newest entry that starts with what you typed. ble.ps1 picks more carefully,
+because a command that worked in one folder often makes no sense in another:
+
+- **Commands you ran in the current folder come first.** If you typed `cd ` in `~\dev`, you get
+  the newest `cd ...` you ran in `~\dev`, even when you ran another `cd` somewhere else later.
+  Turn it off with `bleopt complete_auto_history_cwd=0`.
+- **Entries that wouldn't work here are skipped:** a command that doesn't exist (`command`) or a
+  path that doesn't exist from the current folder (`path`). A word counts as a path when it
+  looks like one (`.\x`, `~\x`, `C:\x`), or when it was a file or folder in the folder where you
+  ran the command. So `cd dev`, run in `~`, is not suggested in `~\dev`, and neither is
+  `code notes.md` in a folder without `notes.md`, while `git checkout origin/main` stays.
+  If no entry fits, you get PowerShell's completion instead, which only offers real paths.
+  Arguments with variables or wildcards (`$HOME\x`, `*.txt`) are not checked.
+  `bleopt complete_auto_history_validate=path` checks only paths,
+  `bleopt complete_auto_history_validate=` turns it off.
+
+Both work in the list view too.
+
+The folders come from your history since the feature exists: ble.ps1 writes them to a second
+file next to the history file (`ConsoleHost_history.txt.dirs`), because PSReadLine's format
+has no room for them. Older entries have no folder: they count as "from somewhere else", and a
+plain word in them (like `dev`) is only checked when it looks like a path.
+
 ## List view
 
 `bleopt complete_auto_view=list`, or `f2` to switch, shows suggestions as a list below the line

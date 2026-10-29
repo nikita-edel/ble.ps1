@@ -40,6 +40,7 @@ public sealed class Highlighter
     readonly IShell _shell;
     readonly Dictionary<string, string> _cmdFace = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, PathKind> _paths = new(StringComparer.Ordinal);
+    readonly Dictionary<(string Dir, string Word), bool> _originPaths = new();
     readonly Dictionary<string, VarKind> _vars = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, HashSet<string>?> _params = new(StringComparer.OrdinalIgnoreCase);
     string? _lastText;
@@ -50,7 +51,7 @@ public sealed class Highlighter
     /// <summary>Forget cached lookups (call once per command line: commands and files may have changed).</summary>
     public void ResetCaches()
     {
-        _cmdFace.Clear(); _paths.Clear(); _vars.Clear(); _params.Clear();
+        _cmdFace.Clear(); _paths.Clear(); _originPaths.Clear(); _vars.Clear(); _params.Clear();
         _lastText = null; _lastFaces = null;
     }
 
@@ -381,6 +382,13 @@ public sealed class Highlighter
 
     void ApplyCommandName(string name, string[] faces, int s, int e, bool quoted)
     {
+        var face = CommandFace(name);
+        if (quoted && face == "syntax_error") return;
+        Fill(faces, s, e, face);
+    }
+
+    string CommandFace(string name)
+    {
         if (!_cmdFace.TryGetValue(name, out var face))
         {
             var kind = _shell.ResolveCommand(name);
@@ -395,8 +403,68 @@ public sealed class Highlighter
             };
             _cmdFace[name] = face;
         }
-        if (quoted && face == "syntax_error") return;
-        Fill(faces, s, e, face);
+        return face;
+    }
+
+    PathKind PathKindOf(string value)
+    {
+        if (!_paths.TryGetValue(value, out var kind))
+        {
+            kind = _shell.ResolvePath(value);
+            _paths[value] = kind;
+        }
+        return kind;
+    }
+
+    static bool IsUrl(string v) =>
+        v.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || v.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// For history suggestions (complete_auto_history_validate): false if the line has a command
+    /// name that doesn't exist (with <paramref name="commands"/>) or a path argument that doesn't
+    /// exist (with <paramref name="paths"/>): the words Highlight marks syntax_error and
+    /// filename_warning, plus words that were files or directories in a directory the entry ran in
+    /// (<paramref name="ranIn"/>). Expressions, variables and wildcards are not checked.
+    /// </summary>
+    public bool IsValid(string text, bool commands, bool paths, IReadOnlyList<string>? ranIn = null)
+    {
+        Token[] tokens;
+        try { tokens = Parse(text).Tokens; } catch { return true; }
+        Token? prev = null;
+        foreach (var t in tokens)
+        {
+            bool functionName = prev != null && prev.Kind is TokenKind.Function or TokenKind.Filter or TokenKind.Workflow;
+            prev = t;
+            if (functionName || t.Kind is not (TokenKind.Generic or TokenKind.Identifier or TokenKind.StringLiteral)) continue;
+            var value = t is StringToken st ? st.Value : t.Text;
+            if ((t.TokenFlags & TokenFlags.CommandName) != 0)
+            {
+                // quoted names are not marked by Highlight either
+                if (commands && t.Kind != TokenKind.StringLiteral && CommandFace(value) == "syntax_error") return false;
+                continue;
+            }
+            // plain words like "dev" are Identifier tokens
+            if (!paths || (t.TokenFlags & (TokenFlags.Keyword | TokenFlags.TypeName | TokenFlags.AttributeName | TokenFlags.MemberName)) != 0) continue;
+            if (value.Length == 0 || IsUrl(value)) continue;
+            if (PathKindOf(value) != PathKind.None) continue;
+            if (IsMissingPath(value) || WasPathIn(value, ranIn)) return false;
+        }
+        return true;
+    }
+
+    // Whether a word was a file or directory in one of the (last 4) directories a history entry ran
+    // in. Then it was a path even if it doesn't look like one ("cd dev" run in ~), whatever the command.
+    bool WasPathIn(string value, IReadOnlyList<string>? dirs)
+    {
+        if (dirs == null) return false;
+        for (int i = dirs.Count - 1; i >= Math.Max(0, dirs.Count - 4); i--)
+        {
+            var key = (dirs[i], value);
+            if (!_originPaths.TryGetValue(key, out var was))
+                _originPaths[key] = was = FileSystemPaths.Resolve(value, dirs[i]) != PathKind.None;
+            if (was) return true;
+        }
+        return false;
     }
 
     public CommandKind ResolveCommandKind(string name) => _shell.ResolveCommand(name);
@@ -422,16 +490,11 @@ public sealed class Highlighter
     {
         if (!Options.GetBool("highlight_filename") || value.Length == 0) return;
         string face;
-        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        if (IsUrl(value))
             face = "filename_url";
         else
         {
-            if (!_paths.TryGetValue(value, out var kind))
-            {
-                kind = _shell.ResolvePath(value);
-                _paths[value] = kind;
-            }
-            face = kind switch
+            face = PathKindOf(value) switch
             {
                 PathKind.Directory => "filename_directory",
                 PathKind.Link => "filename_link",
