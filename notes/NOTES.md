@@ -182,6 +182,13 @@ specific fzf executable. fzf's own `FZF_DEFAULT_OPTS`, `FZF_CTRL_T_OPTS`, `FZF_A
   entries from completion come after 100 ms instead of 300 ms, a key press stops a slow script
   completer, and idle CPU is halved. Slowness that remains is PowerShell's own completion in huge
   folders (e.g. ~90 ms for C:\Windows\WinSxS), which cannot be interrupted.
+- **`~/` paths:** `cd ~/de` no longer shows `[C:\Users\...\dev]` after the cursor; the suggestion
+  and list entries keep the `~` (`~/dev`, `~/Desktop`). TAB still expands it like PowerShell does.
+- **Fewer freezes:** finishing the name of a command from a module that isn't loaded yet
+  (`Get-Disk`, `Get-NetAdapter`) froze the line for 0.3-1.5 s, because checking the name imported
+  the module. The check now runs in the background without importing anything, and the module only
+  loads once you type a `-parameter` (PowerShell's own completion needs it then too). The first key
+  in a new window also skips ~60 ms of warm-up, which now happens during the first pause.
 
 ## Publishing the wiki
 

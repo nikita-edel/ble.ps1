@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 TestResults/
 testResults.xml
+private/
+.env

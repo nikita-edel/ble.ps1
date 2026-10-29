@@ -89,6 +89,9 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
   pipeline thread, so it can't be made async; `Editor.CompleteAt` caches per line and passes a
   cancel callback for idle work (PowerShell.BeginStop from a timer; script completers stop, the
   filesystem completer does not). Measure with `tests/perf/bench.ps1` before and after changes.
+- `GetCommand` on a command from a module that isn't imported yet imports it (0.3-1.5 s). Per-key
+  code must not do that: `ModuleCommandCheck` (Shell.cs) confirms module commands on a background
+  runspace, and `Highlighter.CheckParameters` only looks up parameters once a `-param` is typed.
 - The harness turns `complete_auto_history_validate` off (FakeShell knows few commands); tests of it set it
   and add commands to `S.Commands` (e.g. `cd`).
 - Static global state (Options, Faces, Keymaps, KillRing, Abbrevs, Registers, Macros,

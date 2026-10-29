@@ -21,6 +21,10 @@ PS> ls .local/bn [.local/bin]
 
 Accepting it replaces the word.
 
+Paths you start with `~` stay that way: PowerShell completes `~/de` to the full path
+(`C:\Users\you\dev`), but the suggestion and the list show `~/dev`. TAB still inserts what
+PowerShell returns.
+
 ### Which history entry is suggested
 
 ble.sh suggests the newest entry that starts with what you typed. ble.ps1 picks more carefully,

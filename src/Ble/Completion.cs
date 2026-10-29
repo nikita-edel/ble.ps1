@@ -526,12 +526,26 @@ public sealed partial class Editor
                 }
             }
             // once per session, after a pause: build the command indexes and do the slow first completion
-            if (!_warm && idle >= 500 && !_completionSuggestPending && !_listCompletionPending && !InputPending()) _warm = Shell.Warmup();
+            if (!_warm && idle >= 500 && !_completionSuggestPending && !_listCompletionPending && !InputPending()) _warm = WarmUp();
         }
         finally { _idleTask = false; }
     }
 
     bool _warm;
+
+    // also runs the code every key runs once: the first key would otherwise wait ~100 ms for .NET
+    // to load and compile the highlighter, the history ranking and the parser
+    bool WarmUp()
+    {
+        bool done = Shell.Warmup();
+        try
+        {
+            new Highlighter(Shell).Highlight("Get-ChildItem -Path ./x | Where-Object { $_.Name -like \"a*\" } # x");
+            NewHistoryRanking(HistoryRanking.InlineChecks).Top(History.PrefixMatches("g"), 1);
+        }
+        catch { }
+        return done;
+    }
 
     static bool IsSep(char c) => c is '\\' or '/';
 
@@ -555,7 +569,19 @@ public sealed partial class Editor
     {
         if (completion.Length > 2 && completion[0] == '.' && IsSep(completion[1]) && !(word.Length > 1 && word[0] == '.' && IsSep(word[1])))
             completion = completion.Substring(2);
-        return word.IndexOf('/') >= 0 && word.IndexOf('\\') < 0 ? completion.Replace('\\', '/') : completion;
+        completion = word.IndexOf('/') >= 0 && word.IndexOf('\\') < 0 ? completion.Replace('\\', '/') : completion;
+        return TildeForm(word, completion);
+    }
+
+    // PowerShell completes "~/d" to "C:\Users\me\dev": keep the ~ the user typed ("~/dev")
+    static string TildeForm(string word, string completion)
+    {
+        if (!(word == "~" || (word.Length > 1 && word[0] == '~' && IsSep(word[1])))) return completion;
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\', '/');
+        string quote = completion.Length > 0 && completion[0] is '\'' or '"' ? completion.Substring(0, 1) : "";
+        var path = completion.Substring(quote.Length);
+        if (home.Length == 0 || !PathPrefix(path, home, ignoreCase: true) || (path.Length > home.Length && !IsSep(path[home.Length]))) return completion;
+        return quote + "~" + path.Substring(home.Length);
     }
 
     bool ComputeCompletionSuggestion()

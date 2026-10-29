@@ -174,6 +174,8 @@ public sealed class Highlighter
             if (ca.CommandElements.Any(el => el is VariableExpressionAst { Splatted: true })) continue;
             // native programs and unknown names have no parameter list (and looking them up is slow)
             if (_cmdFace.TryGetValue(name, out var cf) && cf is "syntax_error" or "command_file") continue;
+            // the lookup imports the command's module (0.3-1.5 s): only when there is a parameter to check
+            if (!ca.CommandElements.Any(el => el is CommandParameterAst)) continue;
             if (!_params.TryGetValue(name, out var set))
             {
                 var names = _shell.GetParameterNames(name);

@@ -44,6 +44,9 @@ something feels slow, it is usually PowerShell itself:
   start programs and can take hundreds of milliseconds. They are stopped when you type.
 - **The first prompt** of a new window prepares the command index and the first completion during
   the first pause. Typing a command name within the first half second can take ~40 ms once.
+- **Modules load on first use.** Typing a `-parameter` for a command whose module isn't loaded yet
+  (`Get-Disk -`) imports that module once, which can take up to a second. Typing just the name
+  doesn't.
 
 To measure on your machine:
 

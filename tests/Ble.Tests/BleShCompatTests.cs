@@ -80,6 +80,55 @@ public class BleShCompatTests
         Assert.Equal("ls .local/bin|", h.State);
     }
 
+    // PowerShell completes ~/x to the full path; a completer that does the same
+    static void HomeCompleter(Harness h, params string[] names)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        h.S.Completer = (text, cursor) =>
+        {
+            int s = cursor;
+            while (s > 0 && !char.IsWhiteSpace(text[s - 1])) s--;
+            var leaf = text.Substring(s, cursor - s).Substring(2);
+            var items = names.Where(n => n.StartsWith(leaf, StringComparison.OrdinalIgnoreCase))
+                .Select(n => new CompletionItem(Path.Combine(home, n), n, n, CompletionResultType.ProviderContainer)).ToList();
+            return new CompletionSet(s, cursor - s, items);
+        };
+    }
+
+    [Fact]
+    public void TildePathIsSuggestedWithTheTilde()
+    {
+        var h = new Harness();
+        HomeCompleter(h, "dev", "Desktop");
+        Options.Set("complete_auto_completion", "1");
+        h.Type("cd ~/de");
+        Idle(h);
+        Assert.Equal("v", h.E.Suggestion);      // not " [C:/Users/me/dev] "
+        h.Keys("right");
+        Assert.Equal("cd ~/dev|", h.State);
+        h.Type("x");
+        Idle(h);
+        Assert.Null(h.E.Suggestion);
+    }
+
+    [Fact]
+    public void TildePathInTheListView()
+    {
+        var h = new Harness();
+        HomeCompleter(h, "dev", "Desktop");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_completion", "1");
+        h.Type("cd ~/de");
+        Idle(h);
+        Assert.Null(h.E.Suggestion);            // no bracket form, the list has the entries
+        Assert.Equal(new[] { "cd ~/dev", "cd ~/Desktop" }, h.E.ListViewItems);
+        h.Keys("C-u");
+        h.Type("cd ~/dev");
+        Idle(h);
+        Assert.Null(h.E.Suggestion);
+        Assert.Null(h.E.ListViewItems);         // the only entry is what was typed
+    }
+
     [Fact]
     public void AmbiguousSuggestionAcceptsWordByWord()
     {

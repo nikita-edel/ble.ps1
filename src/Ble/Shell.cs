@@ -101,31 +101,25 @@ public sealed class PsShell : IShell
         if (item.Exists("function:" + name, false, true)) return CommandKind.Function;
         if (_engine.InvokeCommand.GetCmdlet(name) != null) return CommandKind.Cmdlet;
         var m = Index.Module(name, BuildModuleIndex);
-        if (m != CommandKind.NotFound)
-        {
-            // Get-Command also lists commands of Windows-PowerShell-only modules that PowerShell 7 cannot
-            // run; a full name found only here is confirmed once with the real lookup
-            if (!Confirmed.TryGetValue(name, out var c))
-            {
-                var ci = _engine.InvokeCommand.GetCommand(WildcardPattern.Escape(name), CommandTypes.All);
-                Confirmed[name] = c = ci == null ? CommandKind.NotFound : Map(ci.CommandType);
-            }
-            if (c != CommandKind.NotFound) return c;
-        }
+        if (m != CommandKind.NotFound && Check.Exists(name, ModuleOf.GetValueOrDefault(name, ""))) return m;
         return Index.Path(name);
     }
 
-    static readonly Dictionary<string, CommandKind> Confirmed = new(StringComparer.OrdinalIgnoreCase);
+    static readonly ModuleCommandCheck Check = new();
+    static Dictionary<string, string> ModuleOf = new(StringComparer.OrdinalIgnoreCase);
 
     // commands of all available modules, also those not imported yet (they are imported on first use)
     Dictionary<string, CommandKind> BuildModuleIndex()
     {
         var d = new Dictionary<string, CommandKind>(StringComparer.OrdinalIgnoreCase);
+        var modules = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using var ps = NewPs();
         ps.AddCommand("Get-Command").AddParameter("CommandType", CommandTypes.Alias | CommandTypes.Function | CommandTypes.Filter | CommandTypes.Cmdlet | CommandTypes.Configuration)
             .AddParameter("ErrorAction", ActionPreference.Ignore);
         foreach (var o in ps.Invoke())
-            if (o?.BaseObject is CommandInfo ci) d.TryAdd(ci.Name, Map(ci.CommandType));
+            if (o?.BaseObject is CommandInfo ci && d.TryAdd(ci.Name, Map(ci.CommandType))) modules[ci.Name] = ci.ModuleName ?? "";
+        ModuleOf = modules;
+        Check.Reset();
         return d;
     }
 
@@ -287,6 +281,84 @@ public static class FileSystemPaths
         }
         catch { }
         return PathKind.None;
+    }
+}
+
+/// <summary>
+/// Whether PowerShell can run a command that Get-Command lists from a module that isn't imported yet,
+/// found out without touching the user's session. Get-Command also lists commands of
+/// Windows-PowerShell-only modules (ISE, PSScheduledJob ...) that the real lookup doesn't find, but
+/// asking the real lookup imports the module: 0.3-1.5 s on the key that completes the name. So a
+/// background thread with its own runspace reads which modules can be loaded (Get-Module
+/// -ListAvailable, from the manifests, nothing is imported) and uses the real lookup only for commands
+/// of the other modules (some of them load through Windows PowerShell compatibility). Until it
+/// knows, a command counts as found.
+/// </summary>
+sealed class ModuleCommandCheck
+{
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _results = new(StringComparer.OrdinalIgnoreCase);
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _queued = new(StringComparer.OrdinalIgnoreCase);
+    readonly System.Collections.Concurrent.BlockingCollection<(string? Name, string Module)> _queue = new();
+    volatile HashSet<string>? _loadable;
+    Thread? _thread;
+
+    public bool Exists(string name, string module)
+    {
+        if (_results.TryGetValue(name, out var r)) return r;
+        if (_loadable is { } l && l.Contains(module)) return true;
+        if (_queued.TryAdd(name, 0)) Enqueue((name, module));
+        return true;
+    }
+
+    /// <summary>The module index was rebuilt (PSModulePath changed): read the loadable modules again.</summary>
+    public void Reset()
+    {
+        _loadable = null;
+        _results.Clear();
+        _queued.Clear();
+        Enqueue((null, ""));
+    }
+
+    void Enqueue((string?, string) item)
+    {
+        if (_thread == null)
+        {
+            _thread = new Thread(Run) { IsBackground = true, Name = "ble module check" };
+            _thread.Start();
+        }
+        _queue.Add(item);
+    }
+
+    void Run()
+    {
+        try
+        {
+            using var rs = RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
+            rs.Open();
+            foreach (var (name, module) in _queue.GetConsumingEnumerable())
+            {
+                using var ps = PowerShell.Create();
+                ps.Runspace = rs;
+                try
+                {
+                    if (name == null)
+                    {
+                        ps.AddCommand("Get-Module").AddParameter("ListAvailable").AddParameter("ErrorAction", ActionPreference.Ignore);
+                        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var o in ps.Invoke())
+                            if (o?.BaseObject is PSModuleInfo mi) set.Add(mi.Name);
+                        _loadable = set;
+                        continue;
+                    }
+                    if (_loadable is { } l && l.Contains(module)) { _results[name] = true; continue; }
+                    ps.AddScript("$null -ne $ExecutionContext.InvokeCommand.GetCommand($args[0], 'All')").AddArgument(WildcardPattern.Escape(name));
+                    var res = ps.Invoke();
+                    _results[name] = res.Count == 0 || res[0]?.BaseObject is not false;
+                }
+                catch { if (name != null) _results[name] = true; }
+            }
+        }
+        catch { }
     }
 }
 
