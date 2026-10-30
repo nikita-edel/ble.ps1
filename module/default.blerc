@@ -2,8 +2,6 @@
 
 ble-import keymap.vi
 
-bleopt prompt_vi_mode_indicator=
-
 ble-bind -m vi_imap --cursor 5
 ble-bind -m vi_nmap --cursor 2
 ble-bind -m vi_omap --cursor 4
@@ -23,12 +21,23 @@ bleopt complete_auto_view_selected=color
 ble-face list_view_selected_color=fg=#ffff00,bold   
 
 bleopt complete_auto_view_ambiguous=1 
-bleopt complete_auto_delay=33         
+bleopt complete_auto_delay=1
 
 ble-bind -m vi_imap -f 'M-j' history-search-backward 
 ble-bind -m vi_imap -f 'M-k' history-search-forward   
 ble-bind -m vi_xmap -s 'Y' '" + y'
 
-# which history entry is suggested (ble.ps1)
-bleopt complete_auto_history_cwd=1                  # commands run in the current folder first
-bleopt complete_auto_history_validate=command:path  # skip entries whose command or path doesn't exist here ('' = off, 'path' = only paths)
+bleopt complete_auto_history_cwd=1
+bleopt complete_auto_history_validate=command:path
+
+bleopt prompt_capslock_indicator='  \e[31m^^\e[m'
+bleopt keymap_vi_mode_show=
+bleopt prompt_bottom_left='\q{keymap:vi/mode-indicator}'
+bleopt prompt_bottom_center='\w'
+bleopt prompt_bottom_right=' \A'
+
+bleopt capslock_reserve=1
+bleopt prompt_input_after='\q{capslock}'
+bleopt prompt_input_after_position=before
+
+bleopt complete_auto_history_fuzzy=1
