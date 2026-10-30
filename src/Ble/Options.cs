@@ -19,6 +19,9 @@ public static class Options
         ["complete_auto_history"] = "1",         // suggestions from history
         ["complete_auto_history_cwd"] = "1",     // ble.ps1: prefer history entries that ran in the current directory
         ["complete_auto_history_validate"] = "command:path",   // ble.ps1: skip history entries with unknown commands / missing paths ('' = off)
+        ["complete_auto_history_merge"] = "path:case",   // ble.ps1: list the same command once: path (/ \ ~ .\ trailing \), case ('' = off)
+        ["complete_auto_history_fuzzy"] = "",    // ble.ps1: similar history entries (typos) when nothing else is suggested
+        ["complete_auto_history_fuzzy_validate"] = "command:path",   // ble.ps1: complete_auto_history_validate for those
         ["complete_auto_completion"] = "1",      // suggestions from TabExpansion2 when idle
         ["complete_auto_delay"] = "100",         // ms idle before completion-based suggestions (ble.sh: 1; a key press stops a running completion)
         ["complete_auto_menu"] = "",             // ms idle before showing the menu ('' = off)
@@ -43,6 +46,20 @@ public static class Options
         ["prompt_status_align"] = "left",        // left | center | right
         ["prompt_xterm_title"] = "",             // terminal title set at each prompt
         ["prompt_vi_mode_indicator"] = @"\q{keymap:vi/mode-indicator}",   // text of the vi mode line
+        // ble.ps1: where the mode line and prompt_status_line go: bottom | top (edges of the window),
+        // below (under the input, above menus and lists) | above (row between the prompt and the input)
+        ["prompt_mode_line_position"] = "bottom",
+        ["prompt_status_line_position"] = "bottom",   // ble.sh docks the status line at the bottom
+        ["prompt_input_left"] = "",              // ble.ps1: text in front of the input, after the prompt
+        ["prompt_input_after"] = "",             // ble.ps1: text right after the input and its suggestion
+        ["prompt_input_after_position"] = "after",   // ble.ps1: after = behind the suggestion, before = in front of it
+        ["prompt_top_left"] = "", ["prompt_top_center"] = "", ["prompt_top_right"] = "",          // ble.ps1: rows like
+        ["prompt_above_left"] = "", ["prompt_above_center"] = "", ["prompt_above_right"] = "",    // the status line, with
+        ["prompt_below_left"] = "", ["prompt_below_center"] = "", ["prompt_below_right"] = "",    // left/center/right parts,
+        ["prompt_bottom_left"] = "", ["prompt_bottom_center"] = "", ["prompt_bottom_right"] = "", // at the four positions
+        ["prompt_capslock_indicator"] = $"{E}[1;31mCAPS{E}[m",   // ble.ps1: what \q{capslock} shows while caps lock is on
+        ["capslock_refresh"] = "100",            // ble.ps1: ms between caps lock checks while idle ('' = off)
+        ["capslock_reserve"] = "",               // ble.ps1: \q{capslock} keeps its width (spaces) while caps lock is off
         ["exec_errexit_mark"] = $"{E}[91m[ble: exit %d]{E}[m",
         ["exec_error_mark"] = $"{E}[91m[ble: error]{E}[m",
         ["exec_elapsed_mark"] = $"{E}[94m[ble: elapsed %s]{E}[m",
@@ -337,6 +354,8 @@ public static class Faces
         ["list_view_selected"] = "ref:menu_complete_selected",   // ble.ps1: selected entry of the list view
         ["list_view_selected_color"] = "fg=33,bold",              // ble.ps1: the same with complete_auto_view_selected=color
         ["prompt_status_line"] = "fg=231,bg=240",
+        ["prompt_top"] = "none", ["prompt_above"] = "none",       // ble.ps1: the prompt_{top,above,below,bottom}_*
+        ["prompt_below"] = "none", ["prompt_bottom"] = "none",    // rows (the whole row, like a bar)
         ["prompt_ps2"] = "none",                   // ble.ps1
         ["status_line"] = "bold",                  // ble.ps1: vi mode line
         ["status_info"] = "fg=242",                // ble.ps1

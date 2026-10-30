@@ -49,9 +49,7 @@ public class BleShCompatTests
     static void Idle(Harness h)
     {
         Options.Set("complete_auto_completion", "1");
-        Options.Set("complete_auto_delay", "0");
-        h.E.UpdateSuggestion();
-        h.E.GetType().GetMethod("RunIdle", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(h.E, null);
+        h.Idle();
     }
 
     [Fact]
@@ -93,6 +91,44 @@ public class BleShCompatTests
                 .Select(n => new CompletionItem(Path.Combine(home, n), n, n, CompletionResultType.ProviderContainer)).ToList();
             return new CompletionSet(s, cursor - s, items);
         };
+    }
+
+    // PowerShell completes $var\x to the full path (quoted if it has spaces); a completer that does the same
+    static void VariableCompleter(Harness h, string dir)
+    {
+        h.S.Completer = (text, cursor) =>
+        {
+            int s = text.LastIndexOf(' ', cursor - 1) + 1;
+            var items = new[] { "alias.ps1", "ble.ps1" }.Select(n => Path.Combine(dir, n))
+                .Select(p => new CompletionItem(p.Contains(' ') ? "'" + p + "'" : p, p, p, CompletionResultType.ProviderItem)).ToList();
+            return new CompletionSet(s, cursor - s, items);
+        };
+    }
+
+    [Fact]
+    public void VariablePathKeepsTheVariable()
+    {
+        var h = new Harness();
+        h.S.VariableTexts["ps_config"] = Path.Combine(Path.GetTempPath(), "conf");
+        VariableCompleter(h, Path.Combine(Path.GetTempPath(), "conf"));
+        Options.Set("complete_auto_completion", "1");
+        h.Type(@"cp $ps_config\");
+        Idle(h);
+        Assert.Equal("alias.ps1", h.E.Suggestion);   // not " [C:\...\conf\alias.ps1] "
+        Options.Set("complete_auto_view", "list");
+        h.Keys("BS");
+        h.Type(@"\");
+        Idle(h);
+        Assert.Equal(new[] { @"cp $ps_config\alias.ps1", @"cp $ps_config\ble.ps1" }, h.E.ListViewItems);
+
+        // quoted (spaces): single quotes would not expand the variable
+        h = new Harness();
+        h.S.VariableTexts["ps_config"] = Path.Combine(Path.GetTempPath(), "conf dir");
+        VariableCompleter(h, Path.Combine(Path.GetTempPath(), "conf dir"));
+        Options.Set("complete_auto_completion", "1");
+        h.Type(@"cp $ps_config\");
+        Idle(h);
+        Assert.Equal(" [\"$ps_config\\alias.ps1\"] ", h.E.Suggestion);
     }
 
     [Fact]
@@ -459,11 +495,11 @@ public class BleShCompatTests
     {
         var h = new Harness().Vi();
         Options.Set("keymap_vi_mode_name_insert", "EINFÜGEN");
-        Assert.Contains(h.E.BuildModel().Panels, p => p.PlainText == "-- EINFÜGEN --");
+        Assert.Contains(h.E.BuildModel().Bottom, p => p.PlainText == "-- EINFÜGEN --");
         h.Keys("ESC");
-        Assert.Contains(h.E.BuildModel().Panels, p => TextWidth.StripAnsi(p.PlainText) == "~");   // keymap_vi_mode_string_nmap
+        Assert.Contains(h.E.BuildModel().Bottom, p => TextWidth.StripAnsi(p.PlainText) == "~");   // keymap_vi_mode_string_nmap
         h.Type("V");
-        Assert.Contains(h.E.BuildModel().Panels, p => p.PlainText == "-- VISUAL LINE --");
+        Assert.Contains(h.E.BuildModel().Bottom, p => p.PlainText == "-- VISUAL LINE --");
     }
 
     [Fact]
@@ -471,9 +507,9 @@ public class BleShCompatTests
     {
         var h = new Harness();
         h.Type("a");
-        Assert.DoesNotContain(h.E.BuildModel().Panels, p => p.PlainText.Contains("MULTILINE"));
+        Assert.DoesNotContain(h.E.BuildModel().Bottom, p => p.PlainText.Contains("MULTILINE"));
         h.Keys("M-RET");
-        Assert.Contains(h.E.BuildModel().Panels, p => TextWidth.StripAnsi(p.PlainText).StartsWith("-- MULTILINE -- (RET or C-m: insert a newline, C-j: run)"));
+        Assert.Contains(h.E.BuildModel().Bottom, p => TextWidth.StripAnsi(p.PlainText).StartsWith("-- MULTILINE -- (RET or C-m: insert a newline, C-j: run)"));
     }
 
     [Fact]

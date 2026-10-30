@@ -5,11 +5,33 @@ namespace Ble;
 
 public sealed partial class Editor
 {
+    int _expandDepth;
+    bool _promptLive;
+
     /// <summary>
     /// Expands bash/ble.sh prompt sequences in a prompt option (\w \u \h \t \e \n \q{...} ...).
-    /// ScriptBlock values are evaluated instead.
+    /// ScriptBlock values are evaluated instead. An option expanded inside another one (\q{capslock}
+    /// shows prompt_capslock_indicator) expands no further options, so options can't refer to each
+    /// other in a loop.
     /// </summary>
     public string ExpandPrompt(object? raw)
+    {
+        if (_expandDepth >= 2) return "";
+        _expandDepth++;
+        try { return ExpandPromptOnce(raw); }
+        finally { _expandDepth--; }
+    }
+
+    /// <summary>Like ExpandPrompt; live is true if the result can change while a line is edited (\q{...}).</summary>
+    string ExpandPrompt(object? raw, out bool live)
+    {
+        _promptLive = false;
+        var s = ExpandPrompt(raw);
+        live = _promptLive;
+        return s;
+    }
+
+    string ExpandPromptOnce(object? raw)
     {
         if (raw is PSObject pso) raw = pso.BaseObject;
         if (raw is ScriptBlock sb) return Shell.Evaluate(sb);
@@ -93,16 +115,30 @@ public sealed partial class Editor
         return o.ToString();
     }
 
-    string PromptQ(string name) => name switch
+    // \q{...} values change while a line is edited; ExpandPromptIsLive tells callers to expand again
+    string PromptQ(string name)
     {
-        "keymap:vi/mode-indicator" => ModeName(),
-        "keymap:emacs/mode-indicator" => EmacsModeName(),
-        "keymap:vi/mode-name" => Keymap switch { "vi_imap" => "insert", "vi_nmap" => "normal", "vi_xmap" => "visual", "vi_smap" => "select", _ => Keymap },
-        "keymap" => Keymap,
-        _ => "",
-    };
+        _promptLive = true;
+        return name switch
+        {
+            "keymap:vi/mode-indicator" => ModeName(),
+            "keymap:emacs/mode-indicator" => EmacsModeName(),
+            "keymap:vi/mode-name" => Keymap switch { "vi_imap" => "insert", "vi_nmap" => "normal", "vi_xmap" => "visual", "vi_smap" => "select", _ => Keymap },
+            "keymap" => Keymap,
+            "capslock" => CapsLockIndicator(),
+            _ => "",
+        };
+    }
 
-    static string TildePath(string p)
+    // with capslock_reserve, spaces as wide as the indicator while caps lock is off, so nothing around it moves
+    string CapsLockIndicator()
+    {
+        if (_capsLock == null || (_capsLock == false && !Options.GetBool("capslock_reserve"))) return "";
+        var s = ExpandPrompt(Options.GetRaw("prompt_capslock_indicator"));
+        return _capsLock == true ? s : new string(' ', TextWidth.StringWidth(s));
+    }
+
+    internal static string TildePath(string p)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (home.Length > 0 && p.StartsWith(home, StringComparison.OrdinalIgnoreCase)
@@ -150,18 +186,45 @@ public sealed partial class Editor
     {
         var raw = Options.GetRaw("prompt_status_line");
         if (raw == null || (raw is string rs && rs.Length == 0)) return null;
-        var text = ExpandPrompt(raw).Replace("\r", "").Replace('\n', ' ');
+        var align = Options.Get("prompt_status_align");
+        var text = ExpandPrompt(raw);
         int avail = Math.Max(1, width - 1);
+        var sgr = Faces.Sgr("prompt_status_line");
+        if (align.StartsWith("justify", StringComparison.Ordinal))
+        {
+            // ble.sh: justify=SEP (default \r) spreads the fields separated by SEP over the line
+            var sep = align.Length > 8 && align[7] == '=' ? align.Substring(8) : "\r";
+            if (sep == @"\r") sep = "\r";
+            var fields = text.Replace('\n', ' ').Split(sep).Select(f => f.Replace("\r", "")).ToArray();
+            return JustifiedLine(fields, avail, sgr);
+        }
+        text = text.Replace("\r", "").Replace('\n', ' ');
         int tw = TextWidth.StringWidth(text);
-        int pad = Options.Get("prompt_status_align") switch
+        int pad = align switch
         {
             "right" => Math.Max(0, avail - tw),
             "center" => Math.Max(0, (avail - tw) / 2),
             _ => 0,
         };
-        var sgr = Faces.Sgr("prompt_status_line");
         var line = new PanelLine();
         line.Add(new string(' ', pad) + text + new string(' ', Math.Max(0, avail - pad - tw)), sgr);
+        return line;
+    }
+
+    // one field: left; more: the first at the left edge, the last at the right edge, the space shared between them
+    static PanelLine JustifiedLine(string[] fields, int avail, string sgr)
+    {
+        int total = fields.Sum(TextWidth.StringWidth);
+        if (total > avail)
+            return new PanelLine().Add(TextWidth.Truncate(string.Concat(fields), avail), sgr);
+        var line = new PanelLine();
+        int gaps = fields.Length - 1, free = avail - total;
+        for (int i = 0; i < fields.Length; i++)
+        {
+            line.Add(fields[i], sgr);
+            if (i < gaps) line.Add(new string(' ', free / gaps + (i < free % gaps ? 1 : 0)), sgr);
+        }
+        if (gaps == 0) line.Add(new string(' ', free), sgr);
         return line;
     }
 }

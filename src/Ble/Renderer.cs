@@ -19,7 +19,13 @@ public sealed class RenderModel
     public string? Suggestion;
     public string Ps2 = ">> ";
     public string? Rps1;
-    public readonly List<PanelLine> Panels = new();
+    public string? InputLeft;                       // drawn in front of the input
+    public string? InputAfter;                      // drawn after the input and the suggestion
+    public bool InputAfterFirst;                    // ... or between the input and the suggestion
+    public readonly List<PanelLine> Panels = new();  // rows under the input
+    public List<PanelLine> Top = new(), Bottom = new();   // rows docked to the top / bottom of the window
+    public List<PanelLine>? Above;                  // rows reserved between the prompt and the input
+    public int AboveGap;                            // rows of the prompt's last line under them
     public bool Final;
     public string? FinalSuffix;
 }
@@ -36,15 +42,18 @@ public sealed class Renderer
     public int StartCol;            // column where the editing area starts on its first row
     public int CurRow;              // cursor row relative to the first row
     public int Width;               // terminal width used for the last drawing
+    public int Height;              // terminal height used for the last drawing (rows docked to the bottom)
     public bool Active;             // something is drawn and the cursor is inside it
     List<int> _rowWidths = new();   // used columns per row in the last drawing (row 0 includes StartCol)
     int _cursorCol;
+    int _topDrawn;                  // rows drawn at the top of the window
 
     public Renderer(ITerminal term) { _term = term; }
 
     public void Begin(int startCol)
     {
         Width = _term.Width;
+        Height = _term.Height;
         StartCol = Math.Clamp(startCol, 0, Math.Max(0, Width - 1));
         CurRow = 0;
         Active = false;
@@ -170,6 +179,49 @@ public sealed class Renderer
         Emit(c, text, _ => sgr, -1);
     }
 
+    static readonly System.Text.RegularExpressions.Regex SgrReset = new(@"\x1b\[0*m");
+
+    // Draws one panel row from the cursor, cut to the width. Returns the columns used.
+    internal static int AppendPanel(StringBuilder sb, PanelLine p, int w)
+    {
+        int avail = w - 1, used = 0;
+        foreach (var (text, sgr) in p.Segments)
+        {
+            if (avail <= 0) break;
+            var t = OneLine(text);
+            int tw = TextWidth.StringWidth(t);
+            if (tw > avail) { t = TextWidth.Truncate(t, avail); tw = TextWidth.StringWidth(t); }
+            // set the face for each part, and again after every reset inside the text (from prompt options),
+            // so '\e[31mx\e[m' colors only x and the row keeps its background
+            if (sgr.Length > 0 && t.Contains('\x1b')) t = SgrReset.Replace(t, "\x1b[0m" + sgr);
+            sb.Append("\x1b[0m").Append(sgr).Append(t);
+            used += tw;
+            avail -= tw;
+        }
+        sb.Append("\x1b[0m");
+        return used;
+    }
+
+    static string OneLine(string s) => s.Replace('\n', ' ').Replace('\r', ' ').Replace('\t', ' ');
+
+    static readonly List<PanelLine> NoRows = new();
+
+    // Draws the rows docked to the top of the window and clears the rows left from the last drawing
+    // (no rows: clears them). The bottom ones go with the \e[J of the drawing.
+    void DrawTop(StringBuilder sb, List<PanelLine> rows, int w)
+    {
+        int n = Math.Max(rows.Count, _topDrawn);
+        if (n == 0) return;
+        sb.Append("\u001b7");
+        for (int i = 0; i < n; i++)
+        {
+            sb.Append("\x1b[").Append(i + 1).Append(";1H\x1b[2K");
+            if (i < rows.Count) AppendPanel(sb, rows[i], w);
+        }
+        sb.Append("\u001b8");
+        _topDrawn = rows.Count;
+    }
+
     /// <summary>Builds the escape sequence string for a model. Pure apart from reading state.</summary>
     public string Build(RenderModel m, out int cursorRow, out int cursorCol, out List<int> rowWidths)
     {
@@ -183,7 +235,23 @@ public sealed class Renderer
             sb.Append('\r');
             if (StartCol > 0) sb.Append("\x1b[").Append(StartCol).Append('C');
         }
+
+        // rows the prompt wrapper reserved between the prompt and the input (emptied when the line is done)
+        if (m.Above is { Count: > 0 } above)
+        {
+            sb.Append("\x1b[").Append(m.AboveGap + above.Count).Append("A\r");
+            for (int i = 0; i < above.Count; i++)
+            {
+                if (i > 0) sb.Append("\x1b[B\r");
+                sb.Append("\x1b[2K");
+                if (!m.Final) AppendPanel(sb, above[i], w);
+            }
+            sb.Append("\x1b[").Append(m.AboveGap + 1).Append("B\r");
+            if (StartCol > 0) sb.Append("\x1b[").Append(StartCol).Append('C');
+        }
         sb.Append("\x1b[J");
+
+        DrawTop(sb, m.Final ? NoRows : m.Top, w);
 
         // right prompt on the first row, if there is room
         if (!m.Final && !string.IsNullOrEmpty(m.Rps1))
@@ -196,13 +264,21 @@ public sealed class Renderer
                 int snl = m.Suggestion.IndexOf('\n');
                 first += snl >= 0 ? m.Suggestion.Substring(0, snl) : m.Suggestion;
             }
-            int used = StartCol + TextWidth.StringWidth(first);
+            int used = StartCol + TextWidth.StringWidth(m.InputLeft) + TextWidth.StringWidth(first);
+            if (nl < 0 && m.Suggestion?.IndexOf('\n') is null or < 0) used += TextWidth.StringWidth(m.InputAfter);
             if (rw > 0 && used + 1 + rw <= w - 1 && w - rw - StartCol > 0)
             {
                 sb.Append("\x1b[").Append(w - 1 - rw - StartCol).Append('C');
                 sb.Append(m.Rps1).Append("\x1b[0m\r");
                 if (StartCol > 0) sb.Append("\x1b[").Append(StartCol).Append('C');
             }
+        }
+
+        if (!m.Final && !string.IsNullOrEmpty(m.InputLeft))
+        {
+            var left = TextWidth.Truncate(OneLine(m.InputLeft), Math.Max(0, w - 1 - StartCol));
+            sb.Append(left).Append("\x1b[0m");
+            c.Col += TextWidth.StringWidth(left);
         }
 
         c.Ps2 = m.Ps2 ?? "";
@@ -219,11 +295,24 @@ public sealed class Renderer
         var cur = Emit(c, m.Text, SgrAt, Math.Clamp(m.Point, 0, m.Text.Length));
         var cpos = cur ?? (c.Row, c.Col);
 
+        // prompt_input_after: after the suggestion, or between the input and the suggestion; only if it fits on the row
+        void EmitInputAfter()
+        {
+            if (m.Final || string.IsNullOrEmpty(m.InputAfter)) return;
+            var after = OneLine(m.InputAfter);
+            int aw = TextWidth.StringWidth(after);
+            if (c.Col + aw > w - 1) return;
+            SetSgr(c, "");
+            sb.Append(after).Append("\x1b[0m");
+            c.Col += aw;
+        }
+        if (m.InputAfterFirst) EmitInputAfter();
         if (!m.Final && !string.IsNullOrEmpty(m.Suggestion))
         {
             var ssgr = Faces.Sgr("auto_complete");
             Emit(c, m.Suggestion, _ => ssgr, -1);
         }
+        if (!m.InputAfterFirst) EmitInputAfter();
         if (m.Final && !string.IsNullOrEmpty(m.FinalSuffix))
             Emit(c, m.FinalSuffix, _ => "", -1);
         SetSgr(c, "");
@@ -233,23 +322,26 @@ public sealed class Renderer
             foreach (var p in m.Panels)
             {
                 NewRow(c);
-                int avail = w - 1;
-                foreach (var (text, sgr) in p.Segments)
-                {
-                    if (avail <= 0) break;
-                    var t = text.Replace('\n', ' ').Replace('\r', ' ').Replace('\t', ' ');
-                    int tw = TextWidth.StringWidth(t);
-                    if (tw > avail) { t = TextWidth.Truncate(t, avail); tw = TextWidth.StringWidth(t); }
-                    SetSgr(c, sgr);
-                    sb.Append(t);
-                    c.Col += tw;
-                    avail -= tw;
-                }
-                SetSgr(c, "");
+                c.Col = AppendPanel(sb, p, w);
                 c.JustWrapped = false;
             }
         }
         c.RowWidths.Add(c.Col);
+
+        // rows docked to the bottom of the window: make room under the drawing (the terminal scrolls if it has
+        // to), then draw them at absolute rows. The \e[J of the next drawing erases them.
+        if (!m.Final && m.Bottom.Count > 0)
+        {
+            int n = m.Bottom.Count, h = Math.Max(n + 1, Height);
+            for (int i = 0; i < n; i++) sb.Append("\r\n");
+            sb.Append("\x1b[").Append(n).Append("A\u001b7");
+            for (int i = 0; i < n; i++)
+            {
+                sb.Append("\x1b[").Append(h - n + 1 + i).Append(";1H");
+                AppendPanel(sb, m.Bottom[i], w);
+            }
+            sb.Append("\u001b8");
+        }
 
         if (m.Final)
         {
@@ -271,6 +363,7 @@ public sealed class Renderer
 
     public void Render(RenderModel m)
     {
+        Height = _term.Height;
         var s = Build(m, out var row, out var col, out var widths);
         _term.Write(s);
         if (m.Final)
@@ -294,6 +387,7 @@ public sealed class Renderer
     {
         if (!Active) return;
         var sb = new StringBuilder();
+        DrawTop(sb, NoRows, 0);
         if (CurRow > 0) sb.Append("\x1b[").Append(CurRow).Append('A');
         sb.Append('\r');
         if (StartCol > 0) sb.Append("\x1b[").Append(StartCol).Append('C');
@@ -307,6 +401,7 @@ public sealed class Renderer
     public void EraseFromPromptRow(int promptRowsAbove)
     {
         var sb = new StringBuilder();
+        DrawTop(sb, NoRows, 0);
         int up = (Active ? CurRow : 0) + promptRowsAbove;
         if (up > 0) sb.Append("\x1b[").Append(up).Append('A');
         sb.Append("\r\x1b[J");

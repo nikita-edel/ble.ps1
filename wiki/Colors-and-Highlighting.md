@@ -29,7 +29,9 @@ Variables are colored by their current value, like ble.sh: `varname_export` (env
 `varname_unset`, and `varname_new` for a variable being assigned for the first time.
 
 Other faces: `auto_complete` (gray suggestion), `region` (selection), `menu_complete_selected`,
-`menu_complete_match`, `list_view_selected`, `list_view_selected_color`, `prompt_status_line`.
+`menu_complete_match`, `list_view_selected`, `list_view_selected_color`, `prompt_status_line`,
+`status_line` (vi mode line), `prompt_top`, `prompt_above`, `prompt_below`, `prompt_bottom` (the
+[layout rows](Prompt#layout)).
 
 ## Changing a color
 

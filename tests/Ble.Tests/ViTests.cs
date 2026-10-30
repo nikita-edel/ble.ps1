@@ -303,13 +303,13 @@ public class ViTests
     {
         var h = new Harness().Vi();
         var m = h.E.BuildModel();
-        Assert.Contains(m.Panels, p => p.PlainText == "-- INSERT --");
+        Assert.Contains(m.Bottom, p => p.PlainText == "-- INSERT --");
         h.Keys("ESC");
         m = h.E.BuildModel();
-        Assert.DoesNotContain(m.Panels, p => p.PlainText.Contains("INSERT"));
+        Assert.DoesNotContain(m.Bottom, p => p.PlainText.Contains("INSERT"));
         h.Type("v");
         m = h.E.BuildModel();
-        Assert.Contains(m.Panels, p => p.PlainText == "-- VISUAL --");
+        Assert.Contains(m.Bottom, p => p.PlainText == "-- VISUAL --");
     }
 
     // A paste reaches the editor as keys that are all in the input buffer at once; the pauses make

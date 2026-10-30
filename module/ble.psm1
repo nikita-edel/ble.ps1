@@ -38,7 +38,6 @@ $script:BlePromptWrapper = {
     if (-not $__ble_status) { Write-Error -Message '' -ErrorAction Ignore }
     $__ble_out = & $script:BleOrigPrompt
     [Ble.Session]::AfterPrompt($__ble_out)
-    $__ble_out
 }
 
 $script:BleReadLine = {

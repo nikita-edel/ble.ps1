@@ -21,6 +21,10 @@ public sealed class History
     long _knownSize;
     readonly Dictionary<string, List<string>> _dirs = new(StringComparer.Ordinal);   // entry -> directories, most recent last
     long _knownDirsSize;
+    readonly Dictionary<string, int> _runs = new(StringComparer.Ordinal);   // entry -> times it was run (the list keeps one)
+
+    /// <summary>How often an entry was run, as far as the history file tells (entries are kept once).</summary>
+    public int Runs(string entry) => _runs.TryGetValue(entry, out var n) ? n : 0;
 
     static readonly StringComparer DirComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -35,6 +39,7 @@ public sealed class History
     {
         _items.Clear();
         _dirs.Clear();
+        _runs.Clear();
         Invalidate();
     }
 
@@ -75,6 +80,7 @@ public sealed class History
     {
         _items.Clear();
         _dirs.Clear();
+        _runs.Clear();
         Invalidate();
         FilePath = string.IsNullOrEmpty(path) ? null : path;
         _knownSize = 0;
@@ -157,7 +163,7 @@ public sealed class History
     /// <summary>Adds entries (oldest first) to memory only, removing older duplicates.</summary>
     public void AddRange(IEnumerable<string> entries)
     {
-        foreach (var e in entries) _items.Add(e);
+        foreach (var e in entries) { _items.Add(e); _runs[e] = Runs(e) + 1; }
         // dedupe keeping the newest occurrence
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var kept = new List<string>(_items.Count);
@@ -213,6 +219,7 @@ public sealed class History
         }
         _items.Remove(line);
         _items.Add(line);
+        _runs[line] = Runs(line) + 1;
         if (_items.Count > MaxSize) _items.RemoveRange(0, _items.Count - MaxSize);
         Invalidate();
         // a tab or newline in the directory would break the record format

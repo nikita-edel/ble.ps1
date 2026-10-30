@@ -56,7 +56,11 @@ src/Ble/HistoryRanking.cs  ALL rules for which history entries are suggested (in
                         No per-command special cases (the owner rejected a hardcoded cd list).
 src/Ble/PromptSequences.cs  \u \w \q{...} expansion, status line
 src/Ble/Fzf.cs          optional fzf widgets + ** completion trigger (FzfRunner hook for tests)
-src/Ble/Renderer.cs     relative-cursor ANSI drawing, explicit row breaks, resize estimate
+src/Ble/Layout.cs       positions of mode line / status line / prompt_{top,above,below,bottom}_* rows; 'above' rows are
+                        reserved by Session.AfterPrompt (empty rows inserted before the prompt's last line)
+src/Ble/CapsLock.cs     caps lock from the OS (user32 / /sys/class/leds / CoreGraphics), for \q{capslock}
+src/Ble/Renderer.cs     relative-cursor ANSI drawing, explicit row breaks, resize estimate; top/bottom rows are
+                        drawn at absolute rows inside ESC 7 / ESC 8 (write "\u001b7": "\x1b7" is one char in C#)
 src/Ble/Keys.cs         ConsoleKeyInfo -> canonical names ("C-M-x"), keyspec parsing
 src/Ble/Keymap.cs       keymaps; Reset() mirrors ble.sh: BindCommon/History/Complete/Arg, BindEmacs, BindViInsert(+Meta)
 src/Ble/Options.cs      bleopt defaults (ble.ps1's, then every ble.sh option; most of those are accepted no-ops),

@@ -25,6 +25,8 @@ public interface IShell
     CommandKind ResolveCommand(string name);
     PathKind ResolvePath(string path);
     VarKind GetVariableKind(string name);
+    /// <summary>The value of a variable holding one string or path ($ps_config, $env:APPDATA), else null.</summary>
+    string? GetVariableText(string name) => null;
     /// <summary>Parameter names and aliases of a command, or null if they cannot be checked (simple functions, native programs).</summary>
     IReadOnlyCollection<string>? GetParameterNames(string command);
     string? InvokePrompt();
@@ -179,6 +181,23 @@ public sealed class PsShell : IShell
             return VarKind.Normal;
         }
         catch { return VarKind.Normal; }
+    }
+
+    public string? GetVariableText(string name)
+    {
+        try
+        {
+            if (name.StartsWith("env:", StringComparison.OrdinalIgnoreCase)) return Environment.GetEnvironmentVariable(name.Substring(4));
+            var v = _engine?.SessionState.PSVariable.GetValue(name);
+            return (v is PSObject p ? p.BaseObject : v) switch
+            {
+                string s => s,
+                PathInfo pi => pi.ProviderPath,
+                FileSystemInfo fi => fi.FullName,
+                _ => null,
+            };
+        }
+        catch { return null; }
     }
 
     public IReadOnlyCollection<string>? GetParameterNames(string command)

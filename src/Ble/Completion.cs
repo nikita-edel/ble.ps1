@@ -464,19 +464,66 @@ public sealed partial class Editor
             var h = NewHistoryRanking(HistoryRanking.InlineChecks).Best(History.PrefixMatches(Text));
             if (h != null) _suggest = h.Substring(Text.Length);
         }
-        if (_suggest == null && Options.GetBool("complete_auto_completion") && !char.IsWhiteSpace(Text[^1]))
+        // idle task: TabExpansion2, then similar history entries (complete_auto_history_fuzzy)
+        if (_suggest == null && (CompletionSuggestWanted || (!ListViewEnabled && Options.GetBool("complete_auto_history_fuzzy"))))
             _completionSuggestPending = true;
         ScheduleAutoMenu();
     }
 
-    // HistoryRanking with the options: complete_auto_history_cwd, complete_auto_history_validate
-    HistoryRanking NewHistoryRanking(int maxChecks)
+    bool CompletionSuggestWanted => Options.GetBool("complete_auto_completion") && Text.Length > 0 && !char.IsWhiteSpace(Text[^1]);
+
+    // HistoryRanking with the options: complete_auto_history_cwd, complete_auto_history_validate (or the one
+    // named by validateOption), complete_auto_history_merge
+    HistoryRanking NewHistoryRanking(int maxChecks, string validateOption = "complete_auto_history_validate")
     {
         var dir = Options.GetBool("complete_auto_history_cwd") ? Shell.CurrentDirectory : null;
-        var v = Options.Get("complete_auto_history_validate").Split(':');
+        var v = Options.Get(validateOption).Split(':');
         bool commands = v.Contains("command"), paths = v.Contains("path");
         Func<string, bool>? valid = commands || paths ? line => Highlighter.IsValid(line, commands, paths, History.DirsOf(line)) : null;
-        return new HistoryRanking(History, dir, valid, maxChecks);
+        return new HistoryRanking(History, dir, valid, maxChecks, HistoryKey());
+    }
+
+    // relative paths count from the current directory; plain words are paths if they exist there
+    Func<string, string>? HistoryKey()
+    {
+        var m = Options.Get("complete_auto_history_merge").Split(':');
+        bool paths = m.Contains("path"), ignoreCase = m.Contains("case");
+        if (!paths && !ignoreCase) return null;
+        var cwd = Shell.CurrentDirectory;
+        if (_pathExistsDir != cwd) { _pathExists.Clear(); _pathExistsDir = cwd; }
+        return line => HistoryRanking.Key(line, paths, ignoreCase, cwd, PathExists);
+    }
+
+    // file system checks for HistoryKey, kept while the line is edited in the same directory
+    readonly Dictionary<string, bool> _pathExists = new(StringComparer.Ordinal);
+    string? _pathExistsDir;
+
+    bool PathExists(string p)
+    {
+        if (!_pathExists.TryGetValue(p, out var e))
+        {
+            try { e = Directory.Exists(p) || File.Exists(p); } catch { e = false; }
+            _pathExists[p] = e;
+        }
+        return e;
+    }
+
+    // complete_auto_history_fuzzy: similar history entries for a query nothing else matched
+    List<string> SimilarHistory(string query, int max, HashSet<string>? seen = null)
+    {
+        if (!Options.GetBool("complete_auto_history_fuzzy") || query.Contains('\n')) return new List<string>();
+        var rank = NewHistoryRanking(HistoryRanking.ListChecks, "complete_auto_history_fuzzy_validate");
+        seen ??= new HashSet<string>();
+        if (rank.KeyOf(query) is { } qk) seen.Add(qk);
+        return rank.Top(HistoryRanking.Similar(History, query), max, seen);
+    }
+
+    // after the completion-based suggestion found nothing
+    bool ComputeSimilarSuggestion()
+    {
+        if (_suggestFor != Text || _suggest != null || Point != Text.Length || Modal != null || ListViewEnabled) return false;
+        var h = SimilarHistory(Text, 1);
+        return h.Count > 0 && SetAmbiguousSuggestion(0, h[0]);
     }
 
     void ScheduleAutoMenu()
@@ -501,7 +548,7 @@ public sealed partial class Editor
         return r;
     }
 
-    void RunIdle()
+    internal void RunIdle()
     {
         long idle = Term.Now - _lastKeyTime;
         int delay = Options.GetInt("complete_auto_delay", 100);
@@ -511,7 +558,7 @@ public sealed partial class Editor
             if (_completionSuggestPending && idle >= delay)
             {
                 _completionSuggestPending = false;
-                if (ComputeCompletionSuggestion()) SafeRender();
+                if ((CompletionSuggestWanted && ComputeCompletionSuggestion()) || ComputeSimilarSuggestion()) SafeRender();
             }
             if (_listCompletionPending && idle >= delay && ComputeListCompletions()) SafeRender();
             if (_autoMenuPending && idle >= Options.GetInt("complete_auto_menu", 0))
@@ -547,7 +594,7 @@ public sealed partial class Editor
         return done;
     }
 
-    static bool IsSep(char c) => c is '\\' or '/';
+    internal static bool IsSep(char c) => c is '\\' or '/';
 
     /// <summary>Case-insensitive prefix test that treats / and \ as the same character.</summary>
     static bool PathPrefix(string s, string prefix, bool ignoreCase)
@@ -565,23 +612,45 @@ public sealed partial class Editor
 
     // keep the separator the user typed: ".local/b" completes to ".local/bin", not ".local\bin"
     // and drop the .\ that PowerShell puts before relative paths the user typed without it
-    static string UserSeparators(string word, string completion)
+    string UserSeparators(string word, string completion)
     {
         if (completion.Length > 2 && completion[0] == '.' && IsSep(completion[1]) && !(word.Length > 1 && word[0] == '.' && IsSep(word[1])))
             completion = completion.Substring(2);
         completion = word.IndexOf('/') >= 0 && word.IndexOf('\\') < 0 ? completion.Replace('\\', '/') : completion;
-        return TildeForm(word, completion);
+        return VariableForm(word, TildeForm(word, completion));
     }
 
     // PowerShell completes "~/d" to "C:\Users\me\dev": keep the ~ the user typed ("~/dev")
     static string TildeForm(string word, string completion)
     {
         if (!(word == "~" || (word.Length > 1 && word[0] == '~' && IsSep(word[1])))) return completion;
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\', '/');
+        return KeepHead(completion, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "~");
+    }
+
+    // a variable at the start of a path: $name, ${name}, $env:NAME
+    static readonly System.Text.RegularExpressions.Regex VariableHead =
+        new(@"^\$(?:\{(?<n>[^}]+)\}|(?<n>(?:\w+:)?\w+))(?=[\\/]|$)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // PowerShell completes "$ps_config\a" to "C:\...\Config\alias.ps1": keep the variable the user typed
+    string VariableForm(string word, string completion)
+    {
+        var m = VariableHead.Match(word);
+        if (!m.Success || Shell.GetVariableText(m.Groups["n"].Value) is not { Length: > 0 } value) return completion;
+        var kept = KeepHead(completion, value, m.Value);
+        // a variable in single quotes is not expanded: use double quotes, unless the path needs single ones
+        if (kept != completion && kept[0] == '\'')
+            kept = kept.IndexOfAny(['"', '`', '$'], 1 + m.Length) < 0 ? "\"" + kept[1..^1] + "\"" : completion;
+        return kept;
+    }
+
+    // replaces the directory 'dir' at the start of a completion (maybe quoted) with 'head'
+    static string KeepHead(string completion, string dir, string head)
+    {
+        dir = dir.TrimEnd('\\', '/');
         string quote = completion.Length > 0 && completion[0] is '\'' or '"' ? completion.Substring(0, 1) : "";
         var path = completion.Substring(quote.Length);
-        if (home.Length == 0 || !PathPrefix(path, home, ignoreCase: true) || (path.Length > home.Length && !IsSep(path[home.Length]))) return completion;
-        return quote + "~" + path.Substring(home.Length);
+        if (dir.Length == 0 || !PathPrefix(path, dir, ignoreCase: true) || (path.Length > dir.Length && !IsSep(path[dir.Length]))) return completion;
+        return quote + head + path.Substring(dir.Length);
     }
 
     bool ComputeCompletionSuggestion()

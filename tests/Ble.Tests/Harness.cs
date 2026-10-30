@@ -57,6 +57,15 @@ public sealed class Harness
         return this;
     }
 
+    /// <summary>Runs the idle tasks (completion-based and similar suggestions, list completions) without delay.</summary>
+    public Harness Idle()
+    {
+        Options.Set("complete_auto_delay", "0");
+        E.UpdateSuggestion();
+        E.RunIdle();
+        return this;
+    }
+
     /// <summary>Text with a '|' at the cursor position.</summary>
     public string State => E.Text.Insert(E.Point, "|");
 

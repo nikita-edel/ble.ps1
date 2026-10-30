@@ -81,6 +81,7 @@ public sealed partial class Editor
         _listItems = _listHistory.Count > 0 ? new List<ListEntry>(_listHistory) : null;
         // after a space only argument values are listed (e.g. -ErrorAction <here>: Stop, Continue ...)
         _listCompletionPending = ListSource("completion");
+        if (!_listCompletionPending) AddSimilarToListView();
     }
 
     /// <summary>History entries for the list view: prefix matches first, then substring matches,
@@ -89,21 +90,41 @@ public sealed partial class Editor
     {
         var cmp = History.SmartCase(query);
         var rank = NewHistoryRanking(HistoryRanking.ListChecks);
+        // entries that mean the same command are listed once (complete_auto_history_merge), and not at all
+        // when they mean what is typed
+        var seen = new HashSet<string>();
+        if (rank.KeyOf(query) is { } qk) seen.Add(qk);
         IEnumerable<string> Newest()
         {
             for (int i = History.Count - 1; i >= 0; i--)
                 if (History[i] != query) yield return History[i];
         }
-        var prefix = rank.Top(Newest().Where(h => h.StartsWith(query, cmp)), max);
-        var sub = rank.Top(Newest().Where(h => !h.StartsWith(query, cmp) && h.Contains(query, cmp)), max - prefix.Count);
+        var prefix = rank.Top(Newest().Where(h => h.StartsWith(query, cmp)), max, seen);
+        var sub = rank.Top(Newest().Where(h => !h.StartsWith(query, cmp) && h.Contains(query, cmp)), max - prefix.Count, seen);
         return prefix.Concat(sub).Select(h => new ListEntry(h, "History")).ToList();
     }
 
-    /// <summary>Idle task: adds TabExpansion2 results (files, parameters ...) to the list.</summary>
+    // complete_auto_history_fuzzy: similar entries when neither history nor completion listed anything
+    bool AddSimilarToListView()
+    {
+        if (!ListSource("history") || _listItems is { Count: > 0 } || _listQuery == null || _listQuery.Trim().Length == 0) return false;
+        var similar = SimilarHistory(_listQuery, ListMax);
+        if (similar.Count == 0) return false;
+        _listHistory = similar.Select(h => new ListEntry(h, "Similar")).ToList();
+        _listItems = new List<ListEntry>(_listHistory);
+        return true;
+    }
+
+    /// <summary>Idle task: adds TabExpansion2 results (files, parameters ...) to the list, or else similar entries.</summary>
     bool ComputeListCompletions()
     {
         if (!_listCompletionPending || _listFor != Text || _listSel >= 0) return false;
         _listCompletionPending = false;
+        return AddListCompletions() || AddSimilarToListView();
+    }
+
+    bool AddListCompletions()
+    {
         var cs = CompleteAt(Text, Text.Length);
         // substring matches only (subsequence matches are too noisy for a list), and only without history entries
         bool afterSpace = char.IsWhiteSpace(Text[^1]);

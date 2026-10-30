@@ -54,6 +54,10 @@ new line).
 **Prompt.** `exec_errexit_mark` shows a program's exit code. A failed cmdlet shows
 `exec_error_mark` instead.
 
+**Mode line.** The vi/emacs mode line sits at the bottom of the window by default, like the status
+line. `info_display` has no effect. Use `prompt_mode_line_position` instead
+(see [Layout](Prompt#layout)).
+
 **Vi.** `:w` runs the line (an addition). `C-g` also cancels the selection, menu or suggestion.
 
 **Extensions.** `ble-import` knows `keymap.vi`, `keymap.emacs` and the fzf integration. ble.sh's

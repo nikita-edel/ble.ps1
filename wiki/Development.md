@@ -52,6 +52,8 @@ src/Ble/
   Vi.cs, ViExtra.cs   vi modes, operators, registers, macros, marks, ex commands
   Highlighter.cs      highlighting from PowerShell's parser
   PromptSequences.cs  \u \w ... and the status line
+  Layout.cs           where the mode line, status line and extra rows go (top, above, below, bottom)
+  CapsLock.cs         caps lock state from the OS
   Renderer.cs         drawing with relative cursor moves and explicit line breaks
   Keys.cs, Keymap.cs  key names and the default keymaps
   History.cs          history in PSReadLine's file format

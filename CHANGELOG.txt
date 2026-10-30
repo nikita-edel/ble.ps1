@@ -1,0 +1,7 @@
+3.0.0
+- added CAPS detection
+- added rendering of text on positons above, below, and on the sides
+- render line at the bottom of the terminal by default
+- merge aquivalent commands
+- add fuzzing like algorithm to (valid) input for when unknown or non valid commands are entered
+- prevent expansions of variables

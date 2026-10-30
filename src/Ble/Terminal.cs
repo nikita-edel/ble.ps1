@@ -178,7 +178,7 @@ public static class TextWidth
         return (row, col);
     }
 
-    /// <summary>Truncates a plain string to a display width, adding an ellipsis when cut.</summary>
+    /// <summary>Truncates a string to a display width, adding an ellipsis when cut. ANSI sequences are kept whole.</summary>
     public static string Truncate(string s, int max)
     {
         if (max <= 0) return "";
@@ -187,6 +187,12 @@ public static class TextWidth
         int w = 0;
         for (int i = 0; i < s.Length; i++)
         {
+            if (s[i] == '\x1b' && Ansi.Match(s, i) is { Success: true } m && m.Index == i)
+            {
+                sb.Append(m.Value);
+                i += m.Length - 1;
+                continue;
+            }
             string str = s[i].ToString(); int c = s[i];
             if (char.IsHighSurrogate(s[i]) && i + 1 < s.Length) { str = s.Substring(i, 2); c = char.ConvertToUtf32(s[i], s[i + 1]); i++; }
             int cw = c < 0x20 ? 0 : CharWidth(c);

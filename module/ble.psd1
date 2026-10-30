@@ -1,7 +1,7 @@
 @{
     RootModule           = 'ble.psm1'
     NestedModules        = @('Ble.dll')
-    ModuleVersion        = '0.2.3'
+    ModuleVersion        = '0.3.0'
     GUID                 = 'b1e05c1d-4a6e-4f0b-9a8b-2f3c5d7e9a10'
     Author               = 'Nikita Edel'
     Copyright            = '(c) Nikita Edel. MIT License.'

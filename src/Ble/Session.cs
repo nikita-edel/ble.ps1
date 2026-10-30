@@ -41,6 +41,9 @@ public static class Session
         }
         try
         {
+            _editor.AboveRows = _aboveRows;
+            _editor.AbovePromptLine = _abovePromptLine;
+            _aboveRows = 0;
             return _editor.ReadLine();
         }
         catch (Exception ex)
@@ -158,15 +161,48 @@ public static class Session
                 sb.Append(Faces.Sgr("disabled")).Append(line).Append("\x1b[m\r\n");
             }
             if (sb.Length > 0) { Console.Out.Write(sb.ToString()); Console.Out.Flush(); }
+            MakeRoomAtTop();
         }
         catch { }
     }
 
-    /// <summary>Called by the prompt wrapper with the prompt function's output.</summary>
-    public static void AfterPrompt(object? output)
+    /// <summary>
+    /// Called by the prompt wrapper with the prompt function's output; returns the prompt to print.
+    /// Inserts empty rows before the prompt's last line for the rows at position 'above'.
+    /// </summary>
+    public static object? AfterPrompt(object? output)
     {
         var v = output is PSObject p ? p.BaseObject : output;
-        PromptText = v as string;
+        var s = v as string;
+        _aboveRows = 0;
+        _abovePromptLine = "";
+        int n = s != null ? Editor.RowsWanted("above") : 0;
+        if (n > 0)
+        {
+            int nl = s!.LastIndexOf('\n');
+            _abovePromptLine = s.Substring(nl + 1);
+            s = s.Substring(0, nl + 1) + new string('\n', n) + _abovePromptLine;
+            _aboveRows = n;
+            output = s;
+        }
+        PromptText = s;
+        return output;
+    }
+
+    static int _aboveRows;
+    static string _abovePromptLine = "";
+
+    // rows docked to the top of the window cover the first rows: start the prompt below them
+    static void MakeRoomAtTop()
+    {
+        int top = Editor.RowsWanted("top");
+        if (top == 0 || Console.IsOutputRedirected) return;
+        int row = Console.CursorTop - (OperatingSystem.IsWindows() ? Console.WindowTop : 0);
+        if (row < top)
+        {
+            Console.Out.Write(new string('\n', top - row));
+            Console.Out.Flush();
+        }
     }
 
     /// <summary>Clears per-session state (used by tests and ble-reload).</summary>
@@ -175,5 +211,6 @@ public static class Session
         _editor = null;
         _execPending = false;
         PromptText = null;
+        _aboveRows = 0;
     }
 }

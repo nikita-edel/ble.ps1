@@ -30,6 +30,9 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 | `complete_auto_history` | `1` | Suggestions from history |
 | `complete_auto_history_cwd` | `1` | Prefer history entries you ran in the current folder |
 | `complete_auto_history_validate` | `command:path` | Skip history entries with a command or path that doesn't exist (empty: off) |
+| `complete_auto_history_merge` | `path:case` | List entries that are the same command once: `path` spellings, `case` (empty: off) |
+| `complete_auto_history_fuzzy` | | `1`: suggest similar history entries (small typos) when nothing else matches |
+| `complete_auto_history_fuzzy_validate` | `command:path` | `complete_auto_history_validate` for those similar entries |
 | `complete_auto_completion` | `1` | Suggestions from PowerShell's completion |
 | `complete_auto_delay` | `100` | Milliseconds of idle time before completion results appear |
 | `complete_auto_complete_opts` | | `history-disabled`: no history suggestions |
@@ -71,10 +74,16 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 |---|---|---|
 | `prompt_ps2` | `>> ` | Continuation prompt |
 | `prompt_rps1` | | Right prompt |
-| `prompt_status_line` / `prompt_status_align` | / `left` | Line under the command line (`left`, `center`, `right`) |
+| `prompt_status_line` / `prompt_status_align` | / `left` | Status line (`left`, `center`, `right`, `justify`) |
+| `prompt_status_line_position` / `prompt_mode_line_position` | `bottom` | Where the status line / mode line go: `bottom`, `top`, `below`, `above` ([Layout](Prompt#layout)) |
+| `prompt_{top,above,below,bottom}_{left,center,right}` | | Rows with left, center and right parts ([Layout](Prompt#layout)) |
+| `prompt_input_left` / `prompt_input_after` | | Text in front of the input / right after it (and its suggestion) |
+| `prompt_input_after_position` | `after` | `prompt_input_after` behind the suggestion (`after`) or in front of it (`before`) |
+| `capslock_reserve` | | `1`: `\q{capslock}` keeps its width (spaces) while caps lock is off |
 | `prompt_xterm_title` | | Terminal title |
 | `prompt_ps1_transient` / `prompt_ps1_final` | | Transient prompt: `always`, `same-dir` or `trim` / its text |
 | `prompt_ruler` | | Separator line drawn before each prompt |
+| `prompt_capslock_indicator` / `capslock_refresh` | `CAPS` (red) / `100` | What [`\q{capslock}`](Prompt#caps-lock) shows, how often caps lock is checked (ms, `''` = off) |
 | `exec_error_mark` | `[ble: error]` | After a failed PowerShell command |
 | `exec_errexit_mark` | `[ble: exit %d]` | After a native program exits with an error |
 | `exec_elapsed_mark` / `exec_elapsed_threshold` | `[ble: elapsed %s]` / `10000` | After commands slower than the threshold (ms) |

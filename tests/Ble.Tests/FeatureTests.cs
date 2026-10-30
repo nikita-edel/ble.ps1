@@ -21,7 +21,7 @@ public class ViBlockTests
         var h = Normal("abc\ndef\nghi", 0);
         h.Keys("C-v");
         Assert.Equal("vi_xmap", h.E.Keymap);
-        Assert.Contains(h.E.BuildModel().Panels, p => p.PlainText == "-- VISUAL BLOCK --");
+        Assert.Contains(h.E.BuildModel().Bottom, p => p.PlainText == "-- VISUAL BLOCK --");
         h.Type("jld");
         Assert.Equal("|c\nf\nghi", h.State);
         Assert.Equal("vi_nmap", h.E.Keymap);
@@ -97,7 +97,7 @@ public class ViMacroMarkExTests
         var h = Normal("abcdef", 0);
         h.Type("qaxq");
         Assert.Equal("bcdef", h.Text);
-        Assert.DoesNotContain(h.E.BuildModel().Panels, p => p.PlainText.Contains("recording"));
+        Assert.DoesNotContain(h.E.BuildModel().Bottom, p => p.PlainText.Contains("recording"));
         h.Type("2@a");
         Assert.Equal("def", h.Text);
         h.Type("@@");
@@ -109,9 +109,9 @@ public class ViMacroMarkExTests
     {
         var h = Normal("abc", 0);
         h.Type("qb");
-        Assert.Contains(h.E.BuildModel().Panels, p => p.PlainText.Contains("recording @b"));
+        Assert.Contains(h.E.BuildModel().Bottom, p => p.PlainText.Contains("recording @b"));
         h.Type("q");
-        Assert.DoesNotContain(h.E.BuildModel().Panels, p => p.PlainText.Contains("recording"));
+        Assert.DoesNotContain(h.E.BuildModel().Bottom, p => p.PlainText.Contains("recording"));
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public class SelectModeTests
         var h = Normal("hello world", 0);
         h.Type("gh");
         Assert.Equal("vi_smap", h.E.Keymap);
-        Assert.Contains(h.E.BuildModel().Panels, p => p.PlainText == "-- SELECT --");
+        Assert.Contains(h.E.BuildModel().Bottom, p => p.PlainText == "-- SELECT --");
         h.Keys("right", "right");
         h.Type("X");
         Assert.Equal("X|lo world", h.State);
@@ -399,15 +399,41 @@ public class PromptAndWidgetTests
         Options.Set("prompt_status_align", "right");
         h.T.Width = 30;
         h.E.Renderer.Begin(4);
-        var last = h.E.BuildModel().Panels[^1].PlainText;
+        var last = h.E.BuildModel().Bottom[^1].PlainText;
         Assert.Equal("[emacs]".PadLeft(29), last);
         // ble.sh style: hide the mode line and show the mode in the status line instead
         h = new Harness().Vi();
         Options.Set("keymap_vi_mode_show", "");
         Options.Set("prompt_status_line", @"\q{keymap:vi/mode-indicator}");
-        var panels = h.E.BuildModel().Panels;
+        var panels = h.E.BuildModel().Bottom;
         Assert.Single(panels);
         Assert.StartsWith("-- INSERT --", panels[0].PlainText);
+    }
+
+    [Fact]
+    public void CapsLockIndicator()
+    {
+        var h = new Harness().Vi();
+        bool? caps = false;
+        h.E.CapsLockProbe = () => caps;
+        Options.Set("prompt_vi_mode_indicator", @"\q{keymap:vi/mode-indicator} \q{capslock}");
+        Options.Set("prompt_capslock_indicator", @"CAPS \q{capslock}");   // must not recurse
+        h.E.UpdateCapsLock();
+        Assert.Equal("-- INSERT --", h.E.BuildModel().Bottom[0].PlainText.TrimEnd());
+        caps = true;
+        Assert.True(h.E.UpdateCapsLock());
+        Assert.False(h.E.UpdateCapsLock());
+        Assert.Equal("-- INSERT -- CAPS", h.E.BuildModel().Bottom[0].PlainText.TrimEnd());
+        // capslock_reserve: same width while off
+        Options.Set("capslock_reserve", "1");
+        Options.Set("prompt_capslock_indicator", "\x1b[31m^^\x1b[m");
+        Assert.Equal("\x1b[31m^^\x1b[m", h.E.ExpandPrompt(@"\q{capslock}"));
+        caps = false;
+        h.E.UpdateCapsLock();
+        Assert.Equal("  ", h.E.ExpandPrompt(@"\q{capslock}"));
+        Options.Set("capslock_refresh", "");
+        h.E.UpdateCapsLock();
+        Assert.Equal("", h.E.ExpandPrompt(@"\q{capslock}"));
     }
 
     [Fact]

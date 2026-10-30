@@ -45,6 +45,11 @@ public sealed partial class Editor
     long _lastKeyTime;
     int _renderFailures;
     string? _rps1;
+    bool _rps1Live;
+    /// <summary>Reads the caps lock state from the OS (null = unknown). Tests replace it.</summary>
+    public Func<bool?> CapsLockProbe = CapsLock.Read;
+    bool? _capsLock;
+    long _capsLockChecked;
 
     public static readonly List<string> KillRing = new();
 
@@ -83,6 +88,7 @@ public sealed partial class Editor
         ClearSuggestion(); _suggestFor = null; _autoMenuPending = false;
         ResetListView();
         _completeCache.Clear();
+        _pathExistsDir = null;   // files may have changed since the last line
         ResetViLineState();
         History.MaxSize = Math.Max(1, Options.GetInt("history_size", 10000));
         if (Options.GetBool("history_share")) History.Sync();
@@ -90,8 +96,8 @@ public sealed partial class Editor
         _histEdits.Clear();
         Highlighter.ResetCaches();
         _viMarks.Clear(); _viLastJump = -1; _viBlockInsert = null; _viBlockEol = false;
-        _rps1 = ExpandPrompt(Options.GetRaw("prompt_rps1"));
-        if (_rps1.Length == 0) _rps1 = null;
+        UpdateCapsLock();
+        ExpandRps1();
         var title = ExpandPrompt(Options.GetRaw("prompt_xterm_title"));
         if (title.Length > 0) Term.Write("\x1b]0;" + TextWidth.StripAnsi(title).Replace("\a", "") + "\a");
         _lastKeyTime = Term.Now;
@@ -106,6 +112,7 @@ public sealed partial class Editor
         try
         {
             Renderer.Begin(Term.CursorLeft);
+            CheckAboveRows();
             ApplyCursorShape();
             SafeRender();
             while (!Done)
@@ -149,14 +156,33 @@ public sealed partial class Editor
             }
             _keyAfterIdle = true;
             int w = Term.Width;
-            if (w != Renderer.Width)
+            int h = Term.Height;
+            if (w != Renderer.Width || h != Renderer.Height)
             {
                 Renderer.AdjustForResize(w);
                 SafeRender();
             }
+            int capsRefresh = Options.GetInt("capslock_refresh", 0);
+            if (capsRefresh > 0 && Term.Now - _capsLockChecked >= capsRefresh && UpdateCapsLock()) SafeRender();
             RunIdle();
             Term.Wait(10);
         }
+    }
+
+    // expanded once per line, or on each drawing if it has \q{...} (mode, caps lock)
+    void ExpandRps1()
+    {
+        _rps1 = ExpandPrompt(Options.GetRaw("prompt_rps1"), out _rps1Live);
+        if (_rps1.Length == 0) _rps1 = null;
+    }
+
+    /// <summary>Reads the caps lock state for \q{capslock}. Returns true if it changed.</summary>
+    internal bool UpdateCapsLock()
+    {
+        _capsLockChecked = Term.Now;
+        var old = _capsLock;
+        _capsLock = Options.GetInt("capslock_refresh", 0) > 0 ? CapsLockProbe() : null;
+        return _capsLock != old;
     }
 
     public void ProcessKey(KeyInput k)
@@ -223,6 +249,7 @@ public sealed partial class Editor
             final = ExpandPrompt(Options.GetRaw("prompt_ps1_final"));
         }
         Renderer.EraseFromPromptRow(rows);
+        _aboveOk = false;   // the reserved rows went with the prompt
         Term.Write(final + "\x1b[0m");
         var (frows, fcol) = TextWidth.Measure(final, w);
         Renderer.StartCol = fcol;
@@ -235,6 +262,7 @@ public sealed partial class Editor
 
     public RenderModel BuildModel()
     {
+        if (_rps1Live) ExpandRps1();
         var m = new RenderModel { Text = Text, Point = Point, Ps2 = ExpandPrompt(Options.GetRaw("prompt_ps2")), Rps1 = _rps1 };
         var faces = (string?[])Highlighter.Highlight(Text).Clone();
         if (faces.Length != Text.Length) Array.Resize(ref faces, Text.Length);
@@ -256,21 +284,31 @@ public sealed partial class Editor
         m.Faces = faces;
         if (_suggest != null && Point == Text.Length && Modal == null) m.Suggestion = _suggest;
 
+        int width = Renderer.Width > 0 ? Renderer.Width : Term.Width;
+        var layout = LayoutRows(width);
+        m.Panels.AddRange(layout[Below]);
+        m.Top = layout[Top];
+        m.Bottom = layout[Bottom];
+        if (_aboveOk)
+        {
+            m.Above = layout[Above].Take(AboveRows).ToList();
+            while (m.Above.Count < AboveRows) m.Above.Add(new PanelLine());
+            m.AboveGap = TextWidth.Measure(AbovePromptLine, width).Rows;
+        }
+        if (IsSet("prompt_input_left")) m.InputLeft = Expand("prompt_input_left");
+        if (IsSet("prompt_input_after")) m.InputAfter = Expand("prompt_input_after");
+        m.InputAfterFirst = Options.Get("prompt_input_after_position") == "before";
+
         if (Info != null) m.Panels.Add(PanelLine.Of(Info, InfoFace));
         if (Menu != null || ListViewActive)
         {
-            int w = Renderer.Width > 0 ? Renderer.Width : Term.Width;
-            var (rows, _) = TextWidth.Measure(Text + (m.Suggestion ?? ""), w, Renderer.StartCol);
-            int avail = Term.Height - (rows + 1) - m.Panels.Count - 2;
+            var (rows, _) = TextWidth.Measure((m.InputLeft ?? "") + Text + (m.Suggestion ?? ""), width, Renderer.StartCol);
+            int avail = Term.Height - (rows + 1) - m.Panels.Count - m.Top.Count - m.Bottom.Count - 2;
             int maxOpt = Options.GetInt("complete_menu_maxlines", 10);
             int max = maxOpt > 0 ? Math.Min(maxOpt, avail) : avail;    // ble.sh: -1 = no limit
-            if (Menu != null) m.Panels.AddRange(Menu.Layout(w, Math.Max(1, max)));
-            else AddListViewPanels(m, w, Math.Min(avail - 1, ListMax));
+            if (Menu != null) m.Panels.AddRange(Menu.Layout(width, Math.Max(1, max)));
+            else AddListViewPanels(m, width, Math.Min(avail - 1, ListMax));
         }
-        var mode = ModeLine();
-        if (mode != null) m.Panels.Add(PanelLine.Of(mode, "status_line"));
-        var status = StatusLine(Renderer.Width > 0 ? Renderer.Width : Term.Width);
-        if (status != null) m.Panels.Add(status);
         return m;
     }
 

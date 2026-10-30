@@ -158,6 +158,8 @@ public sealed class FakeShell : IShell
         if (VariableKinds.TryGetValue(name, out var k)) return k;
         return Variables.Contains(name) ? VarKind.Normal : VarKind.Unset;
     }
+    public readonly Dictionary<string, string> VariableTexts = new(StringComparer.OrdinalIgnoreCase);
+    public string? GetVariableText(string name) => VariableTexts.TryGetValue(name, out var v) ? v : null;
     public IReadOnlyCollection<string>? GetParameterNames(string command) => Parameters.TryGetValue(command, out var p) ? p : null;
     public string? InvokePrompt() => Prompt;
     public string CurrentDirectory => Cwd;
@@ -212,22 +214,39 @@ public sealed class VtScreen
                     Csi(param, fin);
                     i = j;
                 }
-                else i++;
+                else
+                {
+                    if (i + 1 < s.Length && s[i + 1] == '7') _saved = (Row, Col);
+                    if (i + 1 < s.Length && s[i + 1] == '8') { (Row, Col) = _saved; _pendingWrap = false; }
+                    i++;
+                }
                 continue;
             }
             if (c == '\r') { Col = 0; _pendingWrap = false; continue; }
-            if (c == '\n') { Row++; _pendingWrap = false; continue; }
+            if (c == '\n') { LineFeed(); _pendingWrap = false; continue; }
             if (c == '\a') continue;
-            if (_pendingWrap) { Row++; Col = 0; _pendingWrap = false; }
+            if (_pendingWrap) { LineFeed(); Col = 0; _pendingWrap = false; }
             int w = TextWidth.CharWidth(c);
             if (char.IsHighSurrogate(c) && i + 1 < s.Length) { w = TextWidth.CharWidth(char.ConvertToUtf32(c, s[i + 1])); i++; }
             if (w == 0) continue;
-            if (Col + w > W) { Row++; Col = 0; }
+            if (Col + w > W) { LineFeed(); Col = 0; }
             _rows[Row][Col] = c;
             if (w == 2 && Col + 1 < W) _rows[Row][Col + 1] = '\0';
             Col += w;
             if (Col >= W) { Col = W - 1; _pendingWrap = true; }
         }
+    }
+
+    (int, int) _saved;
+    public int Scrolled;   // rows scrolled off the top
+
+    // at the last row the screen scrolls up
+    void LineFeed()
+    {
+        if (Row < H - 1) { Row++; return; }
+        _rows.RemoveAt(0);
+        _rows.Add(Blank());
+        Scrolled++;
     }
 
     void Csi(string p, char fin)
@@ -236,7 +255,7 @@ public sealed class VtScreen
         switch (fin)
         {
             case 'A': Row = Math.Max(0, Row - n); _pendingWrap = false; break;
-            case 'B': Row += n; _pendingWrap = false; break;
+            case 'B': Row = Math.Min(H - 1, Row + n); _pendingWrap = false; break;
             case 'C': Col = Math.Min(W - 1, Col + n); _pendingWrap = false; break;
             case 'D': Col = Math.Max(0, Col - n); _pendingWrap = false; break;
             case 'J':
@@ -247,8 +266,17 @@ public sealed class VtScreen
                 }
                 else if (p == "2") { for (int r = 0; r < H; r++) _rows[r] = Blank(); }
                 break;
-            case 'H': Row = 0; Col = 0; break;
-            case 'K': for (int c = Col; c < W; c++) _rows[Row][c] = ' '; break;
+            case 'H':
+                {
+                    var rc = p.Split(';');
+                    Row = Math.Clamp(rc[0].Length > 0 && int.TryParse(rc[0], out var r) ? r - 1 : 0, 0, H - 1);
+                    Col = Math.Clamp(rc.Length > 1 && int.TryParse(rc[1], out var cc) ? cc - 1 : 0, 0, W - 1);
+                    _pendingWrap = false;
+                    break;
+                }
+            case 'K':
+                for (int c = p == "2" ? 0 : Col; c < W; c++) _rows[Row][c] = ' ';
+                break;
         }
     }
 
