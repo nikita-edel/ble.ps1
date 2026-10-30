@@ -1,0 +1,96 @@
+name: release
+
+# Publishes a tag as a GitHub release. Pushing commits or tags publishes nothing: start this from
+# the Actions tab ("Run workflow") or with `gh workflow run release` (-f tag=v0.3.1 for a given tag).
+# The release notes are the lines added to CHANGELOG.txt since the last published tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (empty: the newest tag)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # optional: also publish to the PowerShell Gallery when this secret is set
+      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # all tags and history, for the changelog diff
+
+      - name: Pick the tag
+        id: tag
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          $tag = if ($env:TAG) { $env:TAG } else { git tag --sort=-v:refname | Select-Object -First 1 }
+          if (-not $tag -or -not (git tag -l $tag)) { throw "no tag '$tag'" }
+          $published = @(gh release list --exclude-drafts --limit 100 --json tagName --jq '.[].tagName')
+          if ($published -contains $tag) { throw "$tag is already published" }
+          # the newest published tag in this tag's history
+          $last = git tag --sort=-v:refname --merged $tag | Where-Object { $published -contains $_ } | Select-Object -First 1
+          $version = $tag.TrimStart('v')
+          $manifest = (git show "${tag}:module/ble.psd1") -join "`n"
+          if ($manifest -notmatch "ModuleVersion\s*=\s*'$([regex]::Escape($version))'") {
+            throw "$tag does not match ModuleVersion in module/ble.psd1"
+          }
+          git checkout -q $tag
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "last=$last" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "publishing $tag (last published: $(if ($last) { $last } else { 'none' }))"
+
+      - name: Release notes from CHANGELOG.txt
+        shell: pwsh
+        env:
+          LAST: ${{ steps.tag.outputs.last }}
+        run: |
+          if ($env:LAST) {
+            $diff = git diff --no-color -U0 $env:LAST HEAD -- CHANGELOG.txt
+            # an edited or removed line would come out as a new one: fix the file instead of publishing that
+            $removed = $diff | Where-Object { $_ -match '^-' -and $_ -notmatch '^---' }
+            if ($removed) { throw "CHANGELOG.txt lines were changed or removed since $($env:LAST):`n$($removed -join "`n")" }
+            $notes = $diff | Where-Object { $_ -match '^\+' -and $_ -notmatch '^\+\+\+' } | ForEach-Object { $_.Substring(1) }
+          } else {
+            $notes = Get-Content CHANGELOG.txt
+          }
+          if (-not ($notes | Where-Object { $_.Trim() })) { throw "nothing added to CHANGELOG.txt since $($env:LAST)" }
+          $notes -join "`n" | Set-Content notes.md
+          Get-Content notes.md
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build, test, package
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.5 -Force -Scope CurrentUser -SkipPublisherCheck
+          ./build.ps1 -Test -Package
+
+      - name: GitHub release
+        shell: pwsh
+        run: |
+          gh release create '${{ steps.tag.outputs.tag }}' 'out/ble-${{ steps.tag.outputs.version }}.zip' `
+            --title '${{ steps.tag.outputs.tag }}' --notes-file notes.md --verify-tag
+
+      # a version can be uploaded only once: skip it if it is there already (e.g. published by hand)
+      - name: PowerShell Gallery
+        if: env.PSGALLERY_API_KEY != ''
+        shell: pwsh
+        run: |
+          $version = '${{ steps.tag.outputs.version }}'
+          if (Find-Module ble -RequiredVersion $version -Repository PSGallery -ErrorAction SilentlyContinue) {
+            Write-Host "ble $version is already on the PowerShell Gallery"
+          } else {
+            Publish-Module -Path out/ble -NuGetApiKey $env:PSGALLERY_API_KEY -ReleaseNotes (Get-Content notes.md -Raw)
+          }

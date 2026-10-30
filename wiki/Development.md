@@ -14,14 +14,20 @@ built, and `ble version` prints it.
 
 ### Making a release
 
-Change `ModuleVersion` in `module/ble.psd1`, then:
+Add a line per change to `CHANGELOG.txt` (only add: lines changed or removed since the last
+release stop the release), change `ModuleVersion` in `module/ble.psd1`, then:
 
 ```powershell
 ./build.ps1 -Test -E2E -Package
-git commit -am "Release 0.2.0"; git tag v0.2.0; git push; git push --tags
+git commit -am "Release 0.3.1"; git tag v0.3.1; git push; git push --tags
 ```
 
-Then create a release for the tag on GitHub and attach `out/ble-0.2.0.zip`.
+Pushing doesn't publish anything. To publish, run the `release` workflow: Actions → release →
+Run workflow, or `gh workflow run release` (`-f tag=v0.3.1` for another tag than the newest).
+It checks that the tag matches `ModuleVersion`, takes the lines added to `CHANGELOG.txt` since
+the last published release as the release notes, builds and tests, and creates the GitHub release
+with `ble-<version>.zip`. With a `PSGALLERY_API_KEY` secret it also publishes to the PowerShell
+Gallery.
 
 The end-to-end tests start `pwsh` in a ConPTY (pywinpty) and rebuild the screen with pyte. They
 need Python and `pip install -r tests/e2e/requirements.txt`.
