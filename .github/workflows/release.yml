@@ -19,8 +19,9 @@ jobs:
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      # optional: also publish to the PowerShell Gallery when this secret is set
-      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+      # optional: also publish to the PowerShell Gallery when this secret is set. Only whether it is
+      # set is visible here; the key itself goes to the publishing step alone.
+      HAS_GALLERY_KEY: ${{ secrets.PSGALLERY_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,8 +86,10 @@ jobs:
 
       # a version can be uploaded only once: skip it if it is there already (e.g. published by hand)
       - name: PowerShell Gallery
-        if: env.PSGALLERY_API_KEY != ''
+        if: env.HAS_GALLERY_KEY == 'true'
         shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
         run: |
           $version = '${{ steps.tag.outputs.version }}'
           if (Find-Module ble -RequiredVersion $version -Repository PSGallery -ErrorAction SilentlyContinue) {
