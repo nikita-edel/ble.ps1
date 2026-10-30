@@ -80,6 +80,7 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 | `prompt_input_left` / `prompt_input_after` | | Text in front of the input / right after it (and its suggestion) |
 | `prompt_input_after_position` | `after` | `prompt_input_after` behind the suggestion (`after`) or in front of it (`before`) |
 | `capslock_reserve` | | `1`: `\q{capslock}` keeps its width (spaces) while caps lock is off |
+| `capslock_hook_on` / `capslock_hook_off` | | Scriptblock (or code) run when caps lock turns on / off; its output goes to the terminal ([Caps lock](Prompt#caps-lock)) |
 | `prompt_xterm_title` | | Terminal title |
 | `prompt_ps1_transient` / `prompt_ps1_final` | | Transient prompt: `always`, `same-dir` or `trim` / its text |
 | `prompt_ruler` | | Separator line drawn before each prompt |

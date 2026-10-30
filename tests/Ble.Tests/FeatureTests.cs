@@ -437,6 +437,28 @@ public class PromptAndWidgetTests
     }
 
     [Fact]
+    public void CapsLockHooksRunOnChange()
+    {
+        var h = new Harness();
+        bool? caps = false;
+        h.E.CapsLockProbe = () => caps;
+        Options.Set("capslock_hook_on", ScriptBlock.Create("'<on>'"));
+        Options.Set("capslock_hook_off", "'<off>'");   // code as a string, as from a .blerc
+        h.E.UpdateCapsLock();
+        h.T.Output.Clear();
+        h.E.UpdateCapsLock();
+        Assert.Equal("", h.T.Output.ToString());      // no change: nothing runs
+        caps = true;
+        h.E.UpdateCapsLock();
+        Assert.Equal("<on>", h.T.Output.ToString());
+        h.E.UpdateCapsLock();
+        Assert.Equal("<on>", h.T.Output.ToString());
+        caps = false;
+        h.E.UpdateCapsLock();
+        Assert.Equal("<on><off>", h.T.Output.ToString());
+    }
+
+    [Fact]
     public void UserWidgetsUseEditProtocol()
     {
         var h = new Harness();

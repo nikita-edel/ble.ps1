@@ -176,13 +176,35 @@ public sealed partial class Editor
         if (_rps1.Length == 0) _rps1 = null;
     }
 
-    /// <summary>Reads the caps lock state for \q{capslock}. Returns true if it changed.</summary>
+    /// <summary>Reads the caps lock state for \q{capslock} and runs capslock_hook_on/off. Returns true if it changed.</summary>
     internal bool UpdateCapsLock()
     {
         _capsLockChecked = Term.Now;
         var old = _capsLock;
         _capsLock = Options.GetInt("capslock_refresh", 0) > 0 ? CapsLockProbe() : null;
+        if (_capsLock == true && old != true) RunHook("capslock_hook_on");
+        else if (old == true && _capsLock != true) RunHook("capslock_hook_off");
         return _capsLock != old;
+    }
+
+    /// <summary>Runs a hook option: a scriptblock, or PowerShell code as a string. What it returns is
+    /// written to the terminal as is (meant for escape sequences such as a cursor color).</summary>
+    void RunHook(string option)
+    {
+        try
+        {
+            var raw = Options.GetRaw(option);
+            if (raw is PSObject p) raw = p.BaseObject;
+            var sb = raw as ScriptBlock ?? (raw is string { Length: > 0 } code ? ScriptBlock.Create(code) : null);
+            if (sb == null) return;
+            var output = Shell.Evaluate(sb);
+            if (output.Length > 0) Term.Write(output);
+        }
+        catch (Exception ex)
+        {
+            Info = $"ble: {option}: {ex.Message}";
+            InfoFace = "status_error";
+        }
     }
 
     public void ProcessKey(KeyInput k)

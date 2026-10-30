@@ -1,3 +1,6 @@
+3.0.2
+- added caps lock on/off hook
+
 3.0.0
 - added CAPS detection
 - added rendering of text on positons above, below, and on the sides

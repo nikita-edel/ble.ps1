@@ -127,3 +127,17 @@ While waiting for keys, ble.ps1 checks every `capslock_refresh` ms (default `100
 Change the text with `prompt_capslock_indicator`, for example `bleopt prompt_capslock_indicator='\e[33m^\e[m'`.
 With `bleopt capslock_reserve=1`, `\q{capslock}` prints spaces of the same width while caps lock is
 off, so the text next to it doesn't move when you toggle it.
+
+To run something when caps lock turns on or off, give `capslock_hook_on` / `capslock_hook_off` a
+scriptblock (or PowerShell code as a string, e.g. a function name, in a `.blerc`). What it returns
+is written to the terminal, so escape sequences work directly. For example a red cursor while caps
+lock is on, which is hard to miss in vi normal mode, where `j` turns into `J`:
+
+```powershell
+bleopt capslock_hook_on { "`e]12;red`a" }    # cursor color (if the terminal supports OSC 12)
+bleopt capslock_hook_off { "`e]112`a" }      # back to the default color
+```
+
+The hooks run when ble.ps1 notices the change: while you type, or at the next prompt if caps lock
+changed while a command was running. Return only escape sequences; visible text would end up
+wherever the cursor is.

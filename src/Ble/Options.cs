@@ -60,6 +60,8 @@ public static class Options
         ["prompt_capslock_indicator"] = $"{E}[1;31mCAPS{E}[m",   // ble.ps1: what \q{capslock} shows while caps lock is on
         ["capslock_refresh"] = "100",            // ble.ps1: ms between caps lock checks while idle ('' = off)
         ["capslock_reserve"] = "",               // ble.ps1: \q{capslock} keeps its width (spaces) while caps lock is off
+        ["capslock_hook_on"] = "",               // ble.ps1: scriptblock (or code) run when caps lock turns on; its output goes to the terminal
+        ["capslock_hook_off"] = "",              // ble.ps1: ... when it turns off
         ["exec_errexit_mark"] = $"{E}[91m[ble: exit %d]{E}[m",
         ["exec_error_mark"] = $"{E}[91m[ble: error]{E}[m",
         ["exec_elapsed_mark"] = $"{E}[94m[ble: elapsed %s]{E}[m",
