@@ -141,8 +141,13 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
 - CI status (checked 2026-10-29 via the public API, `curl https://api.github.com/repos/nikita-edel/ble.ps1/actions/runs`):
   Linux/macOS unit + Pester pass. **Windows "End-to-end (ConPTY)" has failed on every run since CI exists**
   (~15 of 24 tests: typed text never appears, RET acts like a paste), while all 24 pass locally, also with
-  CI's pywinpty 3.1.2. Runner-specific, not a regression; unsolved. The step has `continue-on-error: true` (owner's choice) so CI stays green.
+  CI's pywinpty 3.1.2. Runner-specific, not a regression; unsolved. The owner removed the step from CI
+  (2026-10-30): e2e runs locally only (`./build.ps1 -E2E`).
 - Unit tests run on Linux/macOS too: build paths with `Path.DirectorySeparatorChar` / `Path.Combine`
-  (a `\` is part of a file name there), not `.\x` literals.
+  (a `\` is part of a file name there), not `.\x` literals. No WSL/Docker on this machine: Linux-only
+  failures show up in CI first. Code that handles paths typed in PowerShell must treat `\` as a
+  separator on every OS (PowerShell does; .NET only on Windows).
+- Releases: `.github/workflows/release.yml`, started by hand (workflow_dispatch), notes = lines
+  added to CHANGELOG.txt since the last GitHub release.
 - Ideas not done yet: ble.sh contrib modules beyond fzf; more context completions (`M-~` user,
   `M-@` host are n/a on Windows); a `build.ps1 -Uninstall` switch.

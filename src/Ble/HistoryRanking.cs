@@ -127,6 +127,8 @@ public sealed class HistoryRanking
         if (w.Length == 0 || w[0] == '-' || w.IndexOfAny(['$', '*', '?']) >= 0) return w;
         bool looks = w.IndexOfAny(['/', '\\']) >= 0 || w[0] is '~' or '.';
         if (!looks && !(dir != null && exists != null && exists(Path.Combine(dir, w)))) return w;
+        // PowerShell takes \ as a separator everywhere; .NET only on Windows
+        if (!OperatingSystem.IsWindows()) w = w.Replace('\\', '/');
         if (w[0] == '~')
         {
             if (w.Length > 1 && !Editor.IsSep(w[1])) return w;   // ~user

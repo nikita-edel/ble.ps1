@@ -616,8 +616,13 @@ public sealed partial class Editor
     {
         if (completion.Length > 2 && completion[0] == '.' && IsSep(completion[1]) && !(word.Length > 1 && word[0] == '.' && IsSep(word[1])))
             completion = completion.Substring(2);
-        completion = word.IndexOf('/') >= 0 && word.IndexOf('\\') < 0 ? completion.Replace('\\', '/') : completion;
-        return VariableForm(word, TildeForm(word, completion));
+        completion = VariableForm(word, TildeForm(word, completion));
+        bool slash = word.IndexOf('/') >= 0, backslash = word.IndexOf('\\') >= 0;
+        if (slash && !backslash) return completion.Replace('\\', '/');
+        // PowerShell on Linux/macOS completes with /: keep the \ typed, except in a path from the root (/usr/bin)
+        if (backslash && !slash && !OperatingSystem.IsWindows() && !completion.TrimStart('\'', '"').StartsWith('/'))
+            return completion.Replace('/', '\\');
+        return completion;
     }
 
     // PowerShell completes "~/d" to "C:\Users\me\dev": keep the ~ the user typed ("~/dev")
