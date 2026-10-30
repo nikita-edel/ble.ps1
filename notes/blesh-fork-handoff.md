@@ -33,9 +33,13 @@ These exist in ble.ps1 only because ble.ps1 copied them from ble.sh:
 - all bleopt options, `:=`/`+=`/`-=`, face specs (`copy:`, `rgb:`, `hsl:` ...), vi mode names,
   the emacs `-- MULTILINE --` indicator, `exec_elapsed_*`, `edit_bell`, `history -c`/`-d`/`-w`
 - `.blerc` loading (ble.ps1's `Import-BleRc` exists only because PowerShell cannot source bash)
+- pasting in vi normal/visual mode with bracketed paste (`vi-command/bracketed-paste`); the
+  fallback without the markers is new, see 3d
 
 Everything PowerShell-specific is out of scope: `TabExpansion2`, the command-name index, the
-PSReadLine history format, cmdlet parameter checks, the comma-splitting fix for `ble-face`.
+PSReadLine history format, cmdlet parameter checks, the comma-splitting fix for `ble-face`,
+keeping `~` in suggested paths (PowerShell expands it, bash completion doesn't), and the
+background check for commands of modules that aren't loaded yet.
 
 ---
 
@@ -103,7 +107,8 @@ prefix completions are not shown inline, because the list already has them.
    Skip entries equal to the query. Entries that start with the query come first; then entries
    that contain it as a substring. Matching is smart-case: case-sensitive only if the query has
    an upper-case letter. Stop at `maxlines` prefix matches. Keep at most `maxlines` substring
-   matches. Label: `History`.
+   matches. Label: `History`. Within each group, entries are filtered and ordered by the history
+   ranking of section 2 (if that is implemented), with up to 100 validity checks per list.
 2. **Completion** (after `complete_auto_delay` ms of idle time, as an idle task that is cancelled
    by user input): generate completion candidates for the word at the end of the query, using
    ble.sh's normal candidate generation.
@@ -191,9 +196,92 @@ replaced the line, the list was recomputed for the full entry, came back empty, 
 
 ---
 
-## 2. Smaller additions (optional, lower priority)
+## 2. History suggestions: current directory first, skip what would fail here
 
-### 2a. `S-RET` inserts a newline when there is no suggestion
+Reference: `src/Ble/HistoryRanking.cs` (all the rules, in one place), `src/Ble/History.cs`
+(`Add(line, dir)`, `RanIn`, `DirsOf`, the `.dirs` file), `src/Ble/Highlighter.cs` (`IsValid`,
+`IsMissingPath`, `WasPathIn`), `src/Ble/Completion.cs` (`UpdateSuggestion`, `NewHistoryRanking`),
+tests in `tests/Ble.Tests/HistoryTests.cs` (`Ranking*`, `WordsThatWerePaths*`, `Suggestions*`,
+`ListViewLeavesOutInvalidEntries`). User docs: `wiki/Completion-and-Suggestions.md`, "Which
+history entry is suggested".
+
+### What it is
+
+ble.sh's inline auto-complete suggests the newest history entry that starts with the typed text.
+A command that worked in one directory often makes no sense in another (`cd dev` from `~`, typed
+again inside `~/dev`). ble.ps1 picks the entry with these rules, in order:
+
+1. **Drop entries that would fail here** (`complete_auto_history_validate`):
+   - `command`: the command name doesn't exist (what the highlighter would show as an error).
+   - `path`: an argument is a path that doesn't exist from the current directory. A word counts
+     as a path if it looks like one (`./x`, `~/x`, `/x`, or `dir/x` where `dir` is an existing
+     directory; the same rule as 3c `IsMissingPath`), or if it was an existing file or directory
+     in one of the last 4 directories the entry ran in (`WasPathIn`). So `cd dev`, run in `~`, is
+     not suggested in `~/dev`, and `vim notes.md` is not suggested where `notes.md` is missing,
+     but `git checkout origin/main` stays (it was never a path).
+   - Words with variables or glob characters (`$HOME/x`, `*.txt`) and URLs are not checked.
+2. **Entries that ran in the current directory come first** (`complete_auto_history_cwd`).
+3. **Then newest first**, as before.
+
+If no entry passes, there is no history suggestion, and the completion-based suggestion takes
+over (which only offers paths that exist).
+
+### Options (new bleopts)
+
+| Option | Default | Meaning |
+|---|---|---|
+| `complete_auto_history_cwd` | `1` | Prefer entries that ran in the current directory |
+| `complete_auto_history_validate` | `command:path` | Colon list of checks: `command`, `path`; empty = off |
+
+For the fork, default both to off (empty / `0`) so ble.sh's behavior doesn't change, and say in the
+docs that the owner uses `1` and `command:path`.
+
+### Where each entry ran
+
+History files don't record the directory. ble.ps1 writes a second file next to the history,
+`<history file>.dirs`, with one record per line: `directory TAB entry` (the entry escaped like
+in the history file, newlines as an escape). It is appended when a command runs, read on
+startup, picked up from other sessions at the next prompt (like the history itself), and
+rewritten when the history is rewritten (deleted entries lose their directories). Per entry, the
+last 16 directories are kept. Entries the history doesn't save (ignored patterns, leading space)
+don't get a record either. Directories are compared case-insensitively on Windows only;
+normalize trailing separators.
+
+In ble.sh this would be a file under ble.sh's state directory (or next to `$HISTFILE`), written
+from the `PRECMD`/`ble/exec` hooks with `$PWD` at the time the command started. It must
+tolerate `cd` inside the command itself (record the directory where the command started).
+
+### Performance rules
+
+- The checks touch the file system, so cap them: at most 50 checked entries for the inline
+  suggestion and 100 for the list view, per keystroke. Entries after the cap are left out.
+- Cache the results of command and path lookups for the current command line; reset the caches
+  at each new prompt (files and commands may have changed).
+- `Best`: walk candidates newest first; the first valid entry from the current directory wins
+  immediately; otherwise remember the first valid entry from elsewhere and keep looking only for
+  one from here (entries from elsewhere after it aren't checked).
+- `Top(max)` (list view): same order; once the list is full, only entries from the current
+  directory can still get in, pushing out the last entry from elsewhere.
+
+### Test cases (port from HistoryTests.cs)
+
+- History `cd a` (ran in `/work/a`), `cd b` (`/work/b`), `cd c` (no directory): typing `cd ` in
+  `/work/a` suggests `a`; in `/work/b/` (trailing slash) `b`; elsewhere `c`; with
+  `complete_auto_history_cwd=0`, `c`.
+- A validator rejecting `cd a` and `cd c` in `/work/a` gives `cd b`; rejecting everything gives
+  nothing; with a cap of 2 the validator runs exactly twice.
+- `cd dev` ran in `~` where `dev` existed: not suggested in `~/dev` (no `~/dev/dev`), suggested
+  again in `~`. `git checkout origin/main` from `~` is suggested anywhere.
+- An unknown command in history is skipped with `command`, kept with `path` only.
+- The list view leaves out the same entries.
+- The `.dirs` file: written on add, read by a second history object (another session), rewritten
+  after deleting entries.
+
+---
+
+## 3. Smaller additions (optional, lower priority)
+
+### 3a. `S-RET` inserts a newline when there is no suggestion
 
 In ble.sh, `S-RET` is bound in the `auto_complete` keymap (insert the suggestion) and in `vi_nmap`
 (`vi-command/forward-first-non-space`), but not in `emacs` or `vi_imap`. ble.ps1 binds `S-RET` in
@@ -201,12 +289,12 @@ In ble.sh, `S-RET` is bound in the `auto_complete` keymap (insert the suggestion
 there is one, otherwise insert a newline. This is useful for multi-line editing without remembering
 `M-RET`/`C-v C-j`.
 
-### 2b. `C-M-j` switches between emacs and vi
+### 3b. `C-M-j` switches between emacs and vi
 
 Bind `C-M-j` to `vi-editing-mode` in `emacs` and to `emacs-editing-mode` in `vi_imap` (these
 widgets exist in `src/edit.sh`).
 
-### 2c. Warn about path arguments that do not exist
+### 3c. Warn about path arguments that do not exist
 
 ble.sh uses `filename_warning` only for redirections that would overwrite a file. ble.ps1 also
 marks *arguments that look like paths but do not exist* with `filename_warning` (underline, red).
@@ -221,12 +309,42 @@ Rule from `src/Ble/Highlighter.cs` (`IsMissingPath`):
 Make it a bleopt (e.g. `highlight_filename_missing`, default off) so ble.sh's default rendering
 stays the same.
 
+### 3d. Pastes in vi normal mode without bracketed paste
+
+ble.sh handles a paste in `vi_nmap`/`vi_xmap`/`vi_smap` through bracketed paste
+(`vi-command/bracketed-paste`: insert after the cursor, or replace the selection, then back to
+normal mode). When the markers don't arrive, every pasted character runs as a vi command
+(`echo hi` → `e`, `c`, `h`, ... and the rest lands in insert mode). That happens when
+`term_bracketed_paste_mode` is off (`set enable-bracketed-paste off` in inputrc, or eterm, where
+ble.sh turns it off itself), in terminals without DECSET 2004, and with tools that "type" the
+clipboard (password managers, `xdotool type`). Git Bash and WSL in Windows Terminal do get the
+markers (checked), so this is a fallback, not a common case.
+
+ble.ps1 had to solve it because Windows consoles drop the markers before `ReadKey`. Reference:
+`TakeViPaste` / `ViPaste` in `src/Ble/ViExtra.cs`, the `_keyAfterIdle` flag in `src/Ble/Editor.cs`
+(`NextKey`), tests `Paste*` and `TypedKeysInNormalModeStayCommands` in
+`tests/Ble.Tests/ViTests.cs`, e2e `test_vi_paste_in_normal_mode`.
+
+The rule: a paste puts all its characters in the input at once, typed keys come one at a time.
+So, in a vi command mode, when the editor was idle (waiting for input) and the first key is
+followed by more input that is already there, read everything available (wait ~5 ms once more
+for a paste that arrives in pieces). If that is 3 or more keys and all are text (printable,
+RET/C-m/C-j as newline, TAB), call the same `.proc` as `vi-command/bracketed-paste` with those
+characters. Otherwise feed the keys back as normal input. Keys that pile up while the editor is
+busy (not idle) never count as a paste, so fast typing during a slow redraw stays commands.
+
+In ble.sh the pieces exist: `ble/decode/has-input` tells whether input is pending, and the
+decoder already batches input that arrives together. Make it a bleopt (e.g.
+`decode_paste_detect`, default off, or on only when `term_bracketed_paste_mode` is off). Known
+limit: a paste of 1-2 characters can't be told apart from two keys pressed together.
+
 ---
 
-## 3. What to hand back
+## 4. What to hand back
 
 - A branch with the list view (section 1), with options, faces, widget and tests.
-- Each optional item from section 2 as its own commit, so the owner can pick.
+- The history ranking (section 2) as its own commits, with options, the directory file and tests.
+- Each optional item from section 3 as its own commit, so the owner can pick.
 - README/doc updates in ble.sh's style (`docs/` and the blerc template `blerc.template`, which
   lists every option with a comment).
 - A short list of anything that turned out impossible or different in bash, and why.
