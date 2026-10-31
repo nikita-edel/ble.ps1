@@ -1,3 +1,6 @@
+0.3.4
+- allow to suggest each line for multiline, or suggest or dont
+
 3.0.3
 - add proper suggestion higlight
 - add configuration of suggestion of multiline (off by default)

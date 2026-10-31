@@ -10,13 +10,17 @@ namespace Ble;
 ///                 directory in a directory the entry ran in ("cd dev" from ~ fails in ~\dev)
 ///   2. Entries that ran in the current directory come before the others (complete_auto_history_cwd).
 ///   3. Newer entries come before older ones.
-/// Multi-line entries are left out unless complete_auto_history_multiline is on.
+/// complete_auto_history_multiline says what happens to multi-line entries (MultilineHistory).
 /// Rule 1 looks at the file system, so it runs for at most maxChecks entries per lookup; the
 /// entries after that are left out.
 /// Top also shows entries that mean the same command once (complete_auto_history_merge, see Key):
 /// the best of them stays.
 /// Similar finds entries for a query that matches none (complete_auto_history_fuzzy).
 /// </summary>
+/// <summary>Values of complete_auto_history_multiline: multi-line entries are not suggested (None),
+/// each of their lines is (Lines, see History.Lines), or they are, whole (Whole).</summary>
+public enum MultilineHistory { None, Lines, Whole }
+
 public sealed class HistoryRanking
 {
     public const int InlineChecks = 50, ListChecks = 100;
@@ -26,23 +30,23 @@ public sealed class HistoryRanking
     readonly Func<string, bool>? _valid;
     readonly Func<string, string>? _key;
     readonly int _maxChecks;
-    readonly bool _multiline;
+    readonly MultilineHistory _multiline;
     int _checks;
 
     /// <param name="dir">the current directory for rule 2, or null to turn it off</param>
     /// <param name="valid">rule 1, or null to turn it off</param>
     /// <param name="key">entries with the same key are the same command (Key), or null to keep all</param>
-    /// <param name="multiline">false: entries with several lines are never suggested</param>
-    public HistoryRanking(History history, string? dir, Func<string, bool>? valid, int maxChecks, Func<string, string>? key = null, bool multiline = true)
+    /// <param name="multiline">Lines: the candidates come from History.Lines</param>
+    public HistoryRanking(History history, string? dir, Func<string, bool>? valid, int maxChecks, Func<string, string>? key = null, MultilineHistory multiline = MultilineHistory.Whole)
     {
         _history = history; _dir = dir; _valid = valid; _maxChecks = maxChecks; _key = key; _multiline = multiline;
     }
 
     public string? KeyOf(string entry) => _key?.Invoke(entry);
 
-    bool RanHere(string entry) => _dir != null && _history.RanIn(entry, _dir);
+    bool RanHere(string entry) => _dir != null && _history.RanIn(entry, _dir, _multiline == MultilineHistory.Lines);
 
-    bool Allowed(string entry) => _multiline || !entry.Contains('\n');
+    bool Allowed(string entry) => _multiline == MultilineHistory.Whole || !entry.Contains('\n');
 
     bool Exhausted => _valid != null && _checks >= _maxChecks;
 
@@ -163,18 +167,21 @@ public sealed class HistoryRanking
     /// per word at most 1 typo (3-5 letters) or 2 (6 and more), none in shorter words. A typo is a
     /// wrong, missing, extra or swapped letter. Queries with fewer than 3 letters find nothing.
     /// </summary>
-    public static List<string> Similar(History history, string query, int limit = 500)
+    public static List<string> Similar(History history, string query, int limit = 500, bool lines = false)
     {
         var found = new List<(int Cost, int Age, string Entry)>();
         var q = Words(query);
         if (q.Length == 0 || q.Sum(w => w.Length) < 3) return new List<string>();
         bool partial = !char.IsWhiteSpace(query[^1]);
-        for (int i = history.Count - 1, age = 0; i >= 0 && found.Count < limit; i--, age++)
+        var items = lines ? history.Lines : history.Items.Reverse();
+        int age = -1;
+        foreach (var e in items)   // entries are unique (History keeps one of each)
         {
-            var e = history[i];   // entries are unique (History keeps one of each)
+            age++;
+            if (found.Count >= limit) break;
             if (e == query) continue;
             if (Similarity(q, partial, Words(e)) is int cost)
-                found.Add((cost - 4 * (int)Math.Log2(Math.Max(1, history.Runs(e))), age, e));
+                found.Add((cost - 4 * (int)Math.Log2(Math.Max(1, history.Runs(e, lines))), age, e));
         }
         return found.OrderBy(f => f.Cost).ThenBy(f => f.Age).Select(f => f.Entry).ToList();
     }

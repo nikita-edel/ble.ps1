@@ -31,7 +31,7 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 | `complete_auto_history_cwd` | `1` | Prefer history entries you ran in the current folder |
 | `complete_auto_history_validate` | `command:path` | Skip history entries with a command or path that doesn't exist (empty: off) |
 | `complete_auto_history_merge` | `path:case` | List entries that are the same command once: `path` spellings, `case` (empty: off) |
-| `complete_auto_history_multiline` | | `1`: also suggest history entries with several lines |
+| `complete_auto_history_multiline` | `none` | History entries with several lines. `none`: not suggested, `line`: each line on its own, `whole`: the whole entry |
 | `complete_auto_history_fuzzy` | | `1`: suggest similar history entries (small typos) when nothing else matches |
 | `complete_auto_history_fuzzy_validate` | `command:path` | `complete_auto_history_validate` for those similar entries |
 | `complete_auto_completion` | `1` | Suggestions from PowerShell's completion |

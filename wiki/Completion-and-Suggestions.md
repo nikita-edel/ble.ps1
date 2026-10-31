@@ -47,8 +47,23 @@ because a command that worked in one folder often makes no sense in another:
 
 Both work in the list view too.
 
-**Multi-line entries** are not suggested or listed. They stay in your history, and
-`bleopt complete_auto_history_multiline=1` suggests them like any other entry.
+**Multi-line entries** are not suggested or listed by default. They stay in your history either
+way, and `bleopt complete_auto_history_multiline` changes what suggestions do with them:
+
+- `none`: nothing.
+- `line`: each line counts on its own, without its indentation. After running
+
+  ```powershell
+  foreach ($f in $files) {
+      git add $f
+  }
+  ```
+
+  typing `git a` suggests `git add $f`. In multi-line input the suggestion is for the line you are
+  on. Lines with no letter or digit (a lone `}`) are skipped.
+- `whole`: the whole entry is suggested like any other.
+
+This only changes suggestions: `up` and history search still go through whole entries.
 
 **The same command is listed once.** `cd ~/dev`, `cd ~\dev\`, `cd C:\Users\you\dev` and
 `CD ~/Dev` all go to the same place, so the list view shows only the best of them. This doesn't

@@ -338,7 +338,7 @@ public class BleShCompatTests
     {
         var h = new Harness("git old", "git a\n{\n}", "git new");
         Options.Set("complete_auto_view", view);
-        Options.Set("complete_auto_history_multiline", "1");
+        Options.Set("complete_auto_history_multiline", "whole");
         if (multiline.Length > 0) Options.Set("complete_auto_view_multiline", multiline);
         Keymaps.Get("emacs").Bind("M-j", "history-search-backward");
         Keymaps.Get("emacs").Bind("M-k", "history-search-forward");
@@ -371,7 +371,7 @@ public class BleShCompatTests
         var h = new Harness("git old", "git a\n{\n}", "git b\n}");
         h.Type("git ");
         Assert.Equal("old", h.E.Suggestion);            // off by default
-        Options.Set("complete_auto_history_multiline", "1");
+        Options.Set("complete_auto_history_multiline", "whole");
         h.Keys("C-u");
         h.Type("git ");
         Assert.Equal("b\n}", h.E.Suggestion);
@@ -391,6 +391,86 @@ public class BleShCompatTests
         h = new Harness("git old", "git a\n}");
         h.Keys("C-up");
         Assert.Equal("git a\n}", h.Text);
+    }
+
+    [Fact]
+    public void EachLineOfAMultiLineEntryIsSuggested()
+    {
+        var h = new Harness("foreach ($f in $x) {\n    git add $f\n}", "git old");
+        h.Type("git a");
+        Assert.Null(h.E.Suggestion);                    // off by default
+
+        Options.Set("complete_auto_history_multiline", "line");
+        h.Keys("C-u");
+        h.Type("git a");
+        Assert.Equal("dd $f", h.E.Suggestion);          // no indentation
+        h.Keys("C-u");
+        h.Type("}");
+        Assert.Null(h.E.Suggestion);                    // a lone } is no line to suggest
+        h.Keys("C-u");
+        h.Type("foreach");
+        Assert.Equal(" ($f in $x) {", h.E.Suggestion);
+
+        // the line you are on is the query, indented or not; the lines above stay
+        h = new Harness("foreach ($f in $x) {\n    git add $f\n}");
+        Options.Set("complete_auto_history_multiline", "line");
+        h.Type("if ($y) {");
+        h.Keys("C-q", "C-j");
+        h.Type("    git a");
+        Assert.Equal("dd $f", h.E.Suggestion);
+        h.E.AcceptSuggestion(wordOnly: false);
+        Assert.Equal("if ($y) {\n    git add $f", h.Text);
+
+        // the history itself keeps the whole entry
+        h = new Harness("{\n  git add\n}");
+        Options.Set("complete_auto_history_multiline", "line");
+        h.Keys("C-up");
+        Assert.Equal("{\n  git add\n}", h.Text);
+    }
+
+    [Fact]
+    public void EachLineOfAMultiLineEntryIsListedAndFoundWhenSimilar()
+    {
+        var h = new Harness("{\n    git add\n}", "git old");
+        Options.Set("complete_auto_history_multiline", "line");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git");
+        Assert.Equal(new[] { "git old", "git add" }, h.E.ListViewItems);
+
+        h = new Harness("{\n    git status\n}");
+        Options.Set("complete_auto_history_multiline", "line");
+        Options.Set("complete_auto_history_fuzzy", "1");
+        h.Type("gti status");
+        h.Idle();
+        Assert.Equal(" [git status] ", h.E.Suggestion);
+
+        // indented input: a similar line replaces the text after the indentation
+        h.Keys("C-u");
+        h.Type("{");
+        h.Keys("C-q", "C-j");
+        h.Type("  gti status");
+        h.Idle();
+        Assert.Equal(" [git status] ", h.E.Suggestion);
+        h.E.AcceptSuggestion(wordOnly: false);
+        Assert.Equal("{\n  git status", h.Text);
+    }
+
+    [Fact]
+    public void LinesOfAnEntryRanWhereTheEntryRan()
+    {
+        var hist = new History();
+        hist.Add("{\n  cd a\n}", @"C:\here");
+        hist.Add("cd b", @"C:\other");
+        var rank = new HistoryRanking(hist, @"C:\here", null, 50, null, MultilineHistory.Lines);
+        Assert.Equal("cd a", rank.Best(hist.PrefixMatches("cd ", lines: true)));
+        Assert.True(hist.RanIn("cd a", @"C:\here", lines: true));
+        Assert.False(hist.RanIn("cd a", @"C:\here"));
+        Assert.Equal(new[] { Path.TrimEndingDirectorySeparator(@"C:\here") }, hist.DirsOf("cd a", lines: true));
+        Assert.Equal(1, hist.Runs("cd a", lines: true));
+
+        hist.Add("{\n  cd a\n  cd c\n}", @"C:\here");   // the index follows the history
+        Assert.Equal(new[] { "cd c", "cd a", "cd b" }.OrderBy(x => x), hist.PrefixMatches("cd ", lines: true).OrderBy(x => x));
+        Assert.Equal(2, hist.Runs("cd a", lines: true));
     }
 
     [Fact]

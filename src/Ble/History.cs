@@ -22,9 +22,19 @@ public sealed class History
     readonly Dictionary<string, List<string>> _dirs = new(StringComparer.Ordinal);   // entry -> directories, most recent last
     long _knownDirsSize;
     readonly Dictionary<string, int> _runs = new(StringComparer.Ordinal);   // entry -> times it was run (the list keeps one)
+    List<string>? _lines;   // see Lines
+    Dictionary<string, List<string>>? _lineParents;   // line -> the multi-line entries it is part of
+    string? _lineBlob;      // _blob for Lines
 
-    /// <summary>How often an entry was run, as far as the history file tells (entries are kept once).</summary>
-    public int Runs(string entry) => _runs.TryGetValue(entry, out var n) ? n : 0;
+    /// <summary>How often an entry was run, as far as the history file tells (entries are kept once).
+    /// lines: the entry is one of Lines, the entries it is part of count too.</summary>
+    public int Runs(string entry, bool lines = false)
+    {
+        int total = 0;
+        foreach (var e in Sources(entry, lines))
+            if (_runs.TryGetValue(e, out var n)) total += n;
+        return total;
+    }
 
     static readonly StringComparer DirComparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -43,7 +53,58 @@ public sealed class History
         Invalidate();
     }
 
-    void Invalidate() { _blob = null; _offsets = null; }
+    void Invalidate() { _blob = null; _offsets = null; _lines = null; _lineParents = null; _lineBlob = null; }
+
+    /// <summary>
+    /// What complete_auto_history_multiline=line suggests from, newest first: single-line entries, and each
+    /// line of the multi-line entries on its own, without indentation. Lines with no letter or
+    /// digit (a lone "}") are left out. Only suggestions use this; the history keeps whole entries.
+    /// </summary>
+    public IReadOnlyList<string> Lines
+    {
+        get
+        {
+            if (_lines == null) BuildLines();
+            return _lines!;
+        }
+    }
+
+    void BuildLines()
+    {
+        var lines = new List<string>(_items.Count);
+        var parents = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = _items.Count - 1; i >= 0; i--)
+        {
+            var entry = _items[i];
+            if (!entry.Contains('\n'))
+            {
+                if (seen.Add(entry)) lines.Add(entry);
+                continue;
+            }
+            var parts = entry.Split('\n');
+            for (int k = parts.Length - 1; k >= 0; k--)
+            {
+                var line = parts[k].Trim();
+                if (!line.Any(char.IsLetterOrDigit)) continue;
+                if (seen.Add(line)) lines.Add(line);
+                if (!parents.TryGetValue(line, out var list)) parents[line] = list = new List<string>(1);
+                if (!list.Contains(entry)) list.Add(entry);
+            }
+        }
+        _lines = lines;
+        _lineParents = parents;
+    }
+
+    // the entry, and with lines the multi-line entries it is a line of
+    IEnumerable<string> Sources(string entry, bool lines)
+    {
+        yield return entry;
+        if (!lines) yield break;
+        if (_lines == null) BuildLines();
+        if (_lineParents!.TryGetValue(entry, out var parents))
+            foreach (var p in parents) yield return p;
+    }
 
     /// <summary>Parses PSReadLine history text into entries.</summary>
     public static List<string> Parse(string content)
@@ -131,15 +192,23 @@ public sealed class History
         if (list.Count > MaxDirsPerEntry) list.RemoveAt(0);
     }
 
-    /// <summary>The directories the entry ran in (the last 16, most recent last), or null.</summary>
-    public IReadOnlyList<string>? DirsOf(string entry) => _dirs.TryGetValue(entry, out var list) ? list : null;
-
-    /// <summary>Whether the entry was run in this directory (one of the last 16 it ran in).</summary>
-    public bool RanIn(string entry, string dir)
+    /// <summary>The directories the entry ran in (the last 16, most recent last), or null.
+    /// lines: the entry is one of Lines, the directories of the entries it is part of count too.</summary>
+    public IReadOnlyList<string>? DirsOf(string entry, bool lines = false)
     {
-        if (!_dirs.TryGetValue(entry, out var list)) return false;
+        if (!lines) return _dirs.TryGetValue(entry, out var list) ? list : null;
+        var all = Sources(entry, true).SelectMany(e => _dirs.TryGetValue(e, out var l) ? l : []).Distinct(DirComparer).ToList();
+        return all.Count > 0 ? all : null;
+    }
+
+    /// <summary>Whether the entry was run in this directory (one of the last 16 it ran in).
+    /// lines: the entry is one of Lines, the entries it is part of count too.</summary>
+    public bool RanIn(string entry, string dir, bool lines = false)
+    {
         dir = NormalizeDir(dir);
-        foreach (var d in list) if (DirComparer.Equals(d, dir)) return true;
+        foreach (var e in Sources(entry, lines))
+            if (_dirs.TryGetValue(e, out var list))
+                foreach (var d in list) if (DirComparer.Equals(d, dir)) return true;
         return false;
     }
 
@@ -314,13 +383,14 @@ public sealed class History
     /// <summary>Most recent entry that starts with prefix and is longer than it.</summary>
     public string? FindPrefix(string prefix) => PrefixMatches(prefix).FirstOrDefault();
 
-    /// <summary>Entries that start with prefix and are longer than it, newest first.</summary>
-    public IEnumerable<string> PrefixMatches(string prefix)
+    /// <summary>Entries (with lines: Lines) that start with prefix and are longer than it, newest first.</summary>
+    public IEnumerable<string> PrefixMatches(string prefix, bool lines = false)
     {
         if (prefix.Length == 0 || _items.Count == 0) yield break;
         if (prefix.IndexOf(Sep) >= 0) yield break;
-        if (_blob == null) BuildBlob();
-        var blob = _blob!;
+        if (lines) _lineBlob ??= Sep + string.Concat(Lines.Select(l => l + Sep));
+        else if (_blob == null) BuildBlob();
+        var blob = lines ? _lineBlob! : _blob!;
         var needle = Sep + prefix;
         int from = 0;
         while (true)

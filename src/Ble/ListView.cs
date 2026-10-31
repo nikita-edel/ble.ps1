@@ -70,6 +70,7 @@ public sealed partial class Editor
             if (!Options.GetBool("complete_auto_view_multiline")) { HideListView(); return; }
             b = LineStart(Text.Length);
         }
+        if (EachHistoryLine) b = HistoryQueryStart;
         if (_listFor == Text && _listSel < 0) return;
         _listSel = -1;
         _listBase = b;
@@ -95,11 +96,8 @@ public sealed partial class Editor
         // when they mean what is typed
         var seen = new HashSet<string>();
         if (rank.KeyOf(query) is { } qk) seen.Add(qk);
-        IEnumerable<string> Newest()
-        {
-            for (int i = History.Count - 1; i >= 0; i--)
-                if (History[i] != query) yield return History[i];
-        }
+        IEnumerable<string> Newest() =>
+            (EachHistoryLine ? History.Lines : History.Items.Reverse()).Where(h => h != query);
         var prefix = rank.Top(Newest().Where(h => h.StartsWith(query, cmp)), max, seen);
         var sub = rank.Top(Newest().Where(h => !h.StartsWith(query, cmp) && h.Contains(query, cmp)), max - prefix.Count, seen);
         return prefix.Concat(sub).Select(h => new ListEntry(h, "History")).ToList();

@@ -462,8 +462,9 @@ public sealed partial class Editor
         // with the list view only the " [correction] " form is shown inline (complete_auto_view_ambiguous)
         if (!ListViewEnabled && Options.GetBool("complete_auto_history") && !HasAutoOpt("history-disabled"))
         {
-            var h = NewHistoryRanking(HistoryRanking.InlineChecks).Best(History.PrefixMatches(Text));
-            if (h != null) _suggest = h.Substring(Text.Length);
+            var query = Text.Substring(HistoryQueryStart);
+            var h = NewHistoryRanking(HistoryRanking.InlineChecks).Best(History.PrefixMatches(query, EachHistoryLine));
+            if (h != null) _suggest = h.Substring(query.Length);
         }
         // idle task: TabExpansion2, then similar history entries (complete_auto_history_fuzzy)
         if (_suggest == null && (CompletionSuggestWanted || (!ListViewEnabled && Options.GetBool("complete_auto_history_fuzzy"))))
@@ -473,15 +474,37 @@ public sealed partial class Editor
 
     bool CompletionSuggestWanted => Options.GetBool("complete_auto_completion") && Text.Length > 0 && !char.IsWhiteSpace(Text[^1]);
 
+    static MultilineHistory MultilineHistoryMode => Options.Get("complete_auto_history_multiline") switch
+    {
+        "line" => MultilineHistory.Lines,
+        "whole" => MultilineHistory.Whole,
+        _ => MultilineHistory.None,   // none, and 0, empty or anything else
+    };
+
+    static bool EachHistoryLine => MultilineHistoryMode == MultilineHistory.Lines;
+
+    // Where the text history is matched against starts. Each line on its own: the last line of the
+    // input, after its indentation (the lines in history have none). Otherwise the whole input.
+    int HistoryQueryStart
+    {
+        get
+        {
+            if (!EachHistoryLine) return 0;
+            int b = LineStart(Text.Length);
+            while (b < Text.Length && char.IsWhiteSpace(Text[b])) b++;
+            return b;
+        }
+    }
+
     // HistoryRanking with the options: complete_auto_history_cwd, complete_auto_history_validate (or the one
-    // named by validateOption), complete_auto_history_merge
+    // named by validateOption), complete_auto_history_merge, complete_auto_history_multiline
     HistoryRanking NewHistoryRanking(int maxChecks, string validateOption = "complete_auto_history_validate")
     {
         var dir = Options.GetBool("complete_auto_history_cwd") ? Shell.CurrentDirectory : null;
         var v = Options.Get(validateOption).Split(':');
-        bool commands = v.Contains("command"), paths = v.Contains("path");
-        Func<string, bool>? valid = commands || paths ? line => Highlighter.IsValid(line, commands, paths, History.DirsOf(line)) : null;
-        return new HistoryRanking(History, dir, valid, maxChecks, HistoryKey(), Options.GetBool("complete_auto_history_multiline"));
+        bool commands = v.Contains("command"), paths = v.Contains("path"), lines = EachHistoryLine;
+        Func<string, bool>? valid = commands || paths ? line => Highlighter.IsValid(line, commands, paths, History.DirsOf(line, lines)) : null;
+        return new HistoryRanking(History, dir, valid, maxChecks, HistoryKey(), MultilineHistoryMode);
     }
 
     // relative paths count from the current directory; plain words are paths if they exist there
@@ -516,15 +539,17 @@ public sealed partial class Editor
         var rank = NewHistoryRanking(HistoryRanking.ListChecks, "complete_auto_history_fuzzy_validate");
         seen ??= new HashSet<string>();
         if (rank.KeyOf(query) is { } qk) seen.Add(qk);
-        return rank.Top(HistoryRanking.Similar(History, query), max, seen);
+        return rank.Top(HistoryRanking.Similar(History, query, lines: EachHistoryLine), max, seen);
     }
 
     // after the completion-based suggestion found nothing
     bool ComputeSimilarSuggestion()
     {
         if (_suggestFor != Text || _suggest != null || Point != Text.Length || Modal != null || ListViewEnabled) return false;
-        var h = SimilarHistory(Text, 1);
-        return h.Count > 0 && SetAmbiguousSuggestion(0, h[0]);
+        int start = HistoryQueryStart;
+        if (start == Text.Length) return false;
+        var h = SimilarHistory(Text.Substring(start), 1);
+        return h.Count > 0 && SetAmbiguousSuggestion(start, h[0]);
     }
 
     void ScheduleAutoMenu()

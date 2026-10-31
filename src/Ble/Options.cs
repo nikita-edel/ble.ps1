@@ -20,7 +20,7 @@ public static class Options
         ["complete_auto_history_cwd"] = "1",     // ble.ps1: prefer history entries that ran in the current directory
         ["complete_auto_history_validate"] = "command:path",   // ble.ps1: skip history entries with unknown commands / missing paths ('' = off)
         ["complete_auto_history_merge"] = "path:case",   // ble.ps1: list the same command once: path (/ \ ~ .\ trailing \), case ('' = off)
-        ["complete_auto_history_multiline"] = "",    // ble.ps1: 1 = multi-line history entries can be suggested
+        ["complete_auto_history_multiline"] = "none",    // ble.ps1: multi-line history entries: none = not suggested, line = each line on its own, whole = the whole entry
         ["complete_auto_history_fuzzy"] = "",    // ble.ps1: similar history entries (typos) when nothing else is suggested
         ["complete_auto_history_fuzzy_validate"] = "command:path",   // ble.ps1: complete_auto_history_validate for those
         ["complete_auto_completion"] = "1",      // suggestions from TabExpansion2 when idle
