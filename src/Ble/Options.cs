@@ -20,6 +20,7 @@ public static class Options
         ["complete_auto_history_cwd"] = "1",     // ble.ps1: prefer history entries that ran in the current directory
         ["complete_auto_history_validate"] = "command:path",   // ble.ps1: skip history entries with unknown commands / missing paths ('' = off)
         ["complete_auto_history_merge"] = "path:case",   // ble.ps1: list the same command once: path (/ \ ~ .\ trailing \), case ('' = off)
+        ["complete_auto_history_multiline"] = "",    // ble.ps1: 1 = multi-line history entries can be suggested
         ["complete_auto_history_fuzzy"] = "",    // ble.ps1: similar history entries (typos) when nothing else is suggested
         ["complete_auto_history_fuzzy_validate"] = "command:path",   // ble.ps1: complete_auto_history_validate for those
         ["complete_auto_completion"] = "1",      // suggestions from TabExpansion2 when idle
@@ -79,6 +80,7 @@ public static class Options
         ["complete_auto_view_selected"] = "line",     // selected list entry: line = whole row, entry = its text (face list_view_selected), color = only its text color (face list_view_selected_color)
         ["complete_auto_view_ambiguous"] = "1",     // list view: still show " [correction] " inline for a wrong word
         ["complete_auto_view_completion"] = "word",   // word: completion entries show only the completed word; line: the whole line
+        ["complete_auto_view_inline"] = "1",        // list view: show what S-RET would take after the cursor
 
         // ---- ble.sh options (defaults from ble.sh). Those with an effect in ble.ps1: ----
         ["complete_auto_complete_opts"] = "",    // history-disabled

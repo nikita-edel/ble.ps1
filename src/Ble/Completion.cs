@@ -428,7 +428,8 @@ public sealed partial class Editor
 
     // ---- auto-suggestions ----
 
-    public string? Suggestion => _suggest;
+    // S-RET takes the list entry over a " [correction] ", so the entry is what's shown
+    public string? Suggestion => ListHint ?? _suggest;
 
     static bool HasAutoOpt(string opt) => (":" + Options.Get("complete_auto_complete_opts") + ":").Contains(":" + opt + ":", StringComparison.Ordinal);
 
@@ -480,7 +481,7 @@ public sealed partial class Editor
         var v = Options.Get(validateOption).Split(':');
         bool commands = v.Contains("command"), paths = v.Contains("path");
         Func<string, bool>? valid = commands || paths ? line => Highlighter.IsValid(line, commands, paths, History.DirsOf(line)) : null;
-        return new HistoryRanking(History, dir, valid, maxChecks, HistoryKey());
+        return new HistoryRanking(History, dir, valid, maxChecks, HistoryKey(), Options.GetBool("complete_auto_history_multiline"));
     }
 
     // relative paths count from the current directory; plain words are paths if they exist there
@@ -696,6 +697,13 @@ public sealed partial class Editor
     /// <summary>Accepts the shown suggestion (or its next word). Returns false if there was none.</summary>
     public bool AcceptSuggestion(bool wordOnly, bool unixWord = false)
     {
+        if (ListHint is { } hint)
+        {
+            // accepted like an inline suggestion; the entry's spelling replaces what was typed
+            var entry = _listItems![0].Line;
+            _suggest = hint; _suggestFor = Text; _suggestAmbig = null;
+            _suggestReplace = entry.StartsWith(_listQuery!, StringComparison.Ordinal) ? null : (_listBase, entry);
+        }
         if (_suggest == null || Point != Text.Length || _suggestFor != Text) return false;
         if (_suggestAmbig is var (astart, insert))
         {

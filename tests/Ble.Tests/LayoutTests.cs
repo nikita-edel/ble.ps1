@@ -163,6 +163,14 @@ public class LayoutTests
         s = new Screen(h);
         Assert.Equal("PS> echo h <x>ello", s.S.Line(0));
         Assert.Equal((0, 10), (s.S.Row, s.S.Col));
+
+        // except for the list view's hint, which continues the word
+        Options.Set("complete_auto_view", "list");
+        h.Keys("C-u");
+        h.Type("echo h");
+        s = new Screen(h);
+        Assert.Equal("PS> echo hello <x>", s.S.Line(0));
+        Assert.Equal((0, 10), (s.S.Row, s.S.Col));
     }
 
     [Fact]

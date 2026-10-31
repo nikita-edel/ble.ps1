@@ -10,6 +10,7 @@ namespace Ble;
 ///                 directory in a directory the entry ran in ("cd dev" from ~ fails in ~\dev)
 ///   2. Entries that ran in the current directory come before the others (complete_auto_history_cwd).
 ///   3. Newer entries come before older ones.
+/// Multi-line entries are left out unless complete_auto_history_multiline is on.
 /// Rule 1 looks at the file system, so it runs for at most maxChecks entries per lookup; the
 /// entries after that are left out.
 /// Top also shows entries that mean the same command once (complete_auto_history_merge, see Key):
@@ -25,19 +26,23 @@ public sealed class HistoryRanking
     readonly Func<string, bool>? _valid;
     readonly Func<string, string>? _key;
     readonly int _maxChecks;
+    readonly bool _multiline;
     int _checks;
 
     /// <param name="dir">the current directory for rule 2, or null to turn it off</param>
     /// <param name="valid">rule 1, or null to turn it off</param>
     /// <param name="key">entries with the same key are the same command (Key), or null to keep all</param>
-    public HistoryRanking(History history, string? dir, Func<string, bool>? valid, int maxChecks, Func<string, string>? key = null)
+    /// <param name="multiline">false: entries with several lines are never suggested</param>
+    public HistoryRanking(History history, string? dir, Func<string, bool>? valid, int maxChecks, Func<string, string>? key = null, bool multiline = true)
     {
-        _history = history; _dir = dir; _valid = valid; _maxChecks = maxChecks; _key = key;
+        _history = history; _dir = dir; _valid = valid; _maxChecks = maxChecks; _key = key; _multiline = multiline;
     }
 
     public string? KeyOf(string entry) => _key?.Invoke(entry);
 
     bool RanHere(string entry) => _dir != null && _history.RanIn(entry, _dir);
+
+    bool Allowed(string entry) => _multiline || !entry.Contains('\n');
 
     bool Exhausted => _valid != null && _checks >= _maxChecks;
 
@@ -52,7 +57,7 @@ public sealed class HistoryRanking
     public string? Best(IEnumerable<string> candidates)
     {
         string? elsewhere = null;
-        foreach (var h in candidates)
+        foreach (var h in candidates.Where(Allowed))
         {
             bool here = RanHere(h);
             if (!here && elsewhere != null) continue;   // only an entry from here can still beat it
@@ -74,7 +79,7 @@ public sealed class HistoryRanking
         var result = new List<(string Entry, string? Key)>();
         int here = 0;   // entries from here, at the start of result
         if (max <= 0) return new List<string>();
-        foreach (var h in candidates)
+        foreach (var h in candidates.Where(Allowed))
         {
             bool isHere = RanHere(h);
             if (result.Count >= max)

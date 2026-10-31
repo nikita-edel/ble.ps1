@@ -1,3 +1,10 @@
+3.0.3
+- add proper suggestion higlight
+- add configuration of suggestion of multiline (off by default)
+- fix install on linux
+- fix history keys getting stuck on multiline suggestions
+- c-j accept suggestion
+
 3.0.2
 - added caps lock on/off hook
 

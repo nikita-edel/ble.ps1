@@ -72,7 +72,8 @@ bleopt prompt_bottom_left='\e[30;42m \q{keymap:vi/mode-name} \e[m \w'
 ```
 
 `prompt_input_after` is drawn right after the input and its suggestion, when it fits on the row.
-With `bleopt prompt_input_after_position=before` it goes between the input and the suggestion instead.
+With `bleopt prompt_input_after_position=before` it goes between the input and the suggestion instead
+(except for the first list entry shown by `complete_auto_view_inline`, which always follows the input directly).
 
 They're named `prompt_{top,above,below,bottom}_{left,center,right}`. When a row gets too narrow, the
 center is dropped first, then the left part gets cut. If one position has several rows, the mode line comes first, then the

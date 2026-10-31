@@ -156,7 +156,7 @@ public class BleShCompatTests
         Options.Set("complete_auto_completion", "1");
         h.Type("cd ~/de");
         Idle(h);
-        Assert.Null(h.E.Suggestion);            // no bracket form, the list has the entries
+        Assert.Equal("v", h.E.Suggestion);      // no bracket form
         Assert.Equal(new[] { "cd ~/dev", "cd ~/Desktop" }, h.E.ListViewItems);
         h.Keys("C-u");
         h.Type("cd ~/dev");
@@ -185,7 +185,7 @@ public class BleShCompatTests
         var h = new Harness("git status", "git commit", "echo git", "ls");
         Options.Set("complete_auto_view", "list");
         h.Type("git");
-        Assert.Null(h.E.Suggestion);
+        Assert.Equal(" commit", h.E.Suggestion);
         Assert.Equal(new[] { "git commit", "git status", "echo git" }, h.E.ListViewItems);
         var panels = h.E.BuildModel().Panels.Select(p => p.PlainText).ToList();
         Assert.Contains(panels, p => p.Contains("git commit") && p.Contains("[History]"));
@@ -224,6 +224,96 @@ public class BleShCompatTests
     }
 
     [Fact]
+    public void ListViewShowsWhatShiftEnterTakesInTheLine()
+    {
+        var h = new Harness("echo git clone", "git status", "git clone git@github.com");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git cl");
+        Assert.Equal("one git@github.com", h.E.Suggestion);
+        Assert.Equal("one git@github.com", h.E.BuildModel().Suggestion);
+        h.Keys("down");                       // the line shows the selected entry
+        Assert.Equal("git clone git@github.com|", h.State);
+        Assert.Null(h.E.Suggestion);
+        h.Keys("up");
+        Assert.Equal("one git@github.com", h.E.Suggestion);
+        h.Keys("S-RET");
+        Assert.Equal("git clone git@github.com|", h.State);
+        Assert.Null(h.E.Suggestion);
+
+        // follows the list while typing
+        h = new Harness("git status", "git stash");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git st");
+        Assert.Equal("ash", h.E.Suggestion);
+        h.Type("at");
+        Assert.Equal("us", h.E.Suggestion);
+
+        // an entry that only contains the text can't continue it, S-RET still takes it
+        h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        h.Type("status");
+        Assert.Null(h.E.Suggestion);
+        h.Keys("S-RET");
+        Assert.Equal("git status|", h.State);
+
+        // off
+        h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_view_inline", "0");
+        h.Type("git s");
+        Assert.Null(h.E.Suggestion);
+        h.Keys("right");
+        Assert.Equal("git s|", h.State);
+    }
+
+    [Fact]
+    public void ListViewHintIsAcceptedLikeAnInlineSuggestion()
+    {
+        var h = new Harness("git commit -m x");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git c");
+        h.Keys("M-f");
+        Assert.Equal("git commit|", h.State);
+        Assert.Equal(" -m x", h.E.Suggestion);
+        h.Keys("right");
+        Assert.Equal("git commit -m x|", h.State);
+
+        h = new Harness("Get-Item");                // the entry's spelling wins, as with S-RET
+        Options.Set("complete_auto_view", "list");
+        h.Type("get-i");
+        Assert.Equal("tem", h.E.Suggestion);
+        h.Keys("right");
+        Assert.Equal("Get-Item|", h.State);
+
+        h = new Harness("Get-Item");                // only the current line is replaced
+        Options.Set("complete_auto_view", "list");
+        h.Type("z");
+        h.Keys("S-RET");
+        h.Type("get-i");
+        Assert.Equal("tem", h.E.Suggestion);
+        h.Keys("right");
+        Assert.Equal("z\nGet-Item|", h.State);
+
+        h = new Harness("git status");              // shift only selects
+        Options.Set("complete_auto_view", "list");
+        h.Type("git s");
+        h.Keys("S-right");
+        Assert.Equal("git s|", h.State);
+
+        h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git s");
+        h.Keys("C-g");
+        Assert.Equal("git s|", h.State);
+        Assert.Null(h.E.Suggestion);
+        h.Type("t");
+        Assert.Equal("atus", h.E.Suggestion);       // back once the text changes
+        h.Keys("C-j");
+        Assert.True(h.E.Done);
+        Assert.Equal("git status", h.E.Result);
+    }
+
+    [Fact]
     public void ListViewHistoryKeysMoveThroughTheList()
     {
         var h = new Harness("echo a1", "echo a2", "echo a3");
@@ -238,6 +328,69 @@ public class BleShCompatTests
         h.Keys("M-k");                        // newer = up
         Assert.Equal("echo a3|", h.State);
         Assert.Contains(h.E.BuildModel().Panels, p => p.PlainText.StartsWith("> echo a3"));
+    }
+
+    [Theory]
+    [InlineData("list", "")]
+    [InlineData("list", "0")]
+    [InlineData("inline", "1")]
+    public void HistoryKeysGoPastAMultiLineEntry(string view, string multiline)
+    {
+        var h = new Harness("git old", "git a\n{\n}", "git new");
+        Options.Set("complete_auto_view", view);
+        Options.Set("complete_auto_history_multiline", "1");
+        if (multiline.Length > 0) Options.Set("complete_auto_view_multiline", multiline);
+        Keymaps.Get("emacs").Bind("M-j", "history-search-backward");
+        Keymaps.Get("emacs").Bind("M-k", "history-search-forward");
+        h.Type("git");
+        h.Keys("M-j");
+        Assert.Equal("git new", h.Text);
+        h.Keys("M-j");
+        Assert.Equal("git a\n{\n}", h.Text);
+        h.Keys("M-j");
+        Assert.Equal("git old", h.Text);
+        h.Keys("M-k");
+        Assert.Equal("git a\n{\n}", h.Text);
+        h.Keys("M-k");
+        Assert.Equal("git new", h.Text);
+    }
+
+    [Fact]
+    public void HistoryKeysGoPastAMultiLineEntryFromAnEmptyLine()
+    {
+        var h = new Harness("git old", "git a\n{\n}", "git new");
+        Options.Set("complete_auto_view", "list");
+        Keymaps.Get("emacs").Bind("M-j", "history-search-backward");
+        h.Keys("M-j", "M-j", "M-j");
+        Assert.Equal("git old", h.Text);
+    }
+
+    [Fact]
+    public void MultiLineEntriesCanBeLeftOutOfSuggestions()
+    {
+        var h = new Harness("git old", "git a\n{\n}", "git b\n}");
+        h.Type("git ");
+        Assert.Equal("old", h.E.Suggestion);            // off by default
+        Options.Set("complete_auto_history_multiline", "1");
+        h.Keys("C-u");
+        h.Type("git ");
+        Assert.Equal("b\n}", h.E.Suggestion);
+
+        h = new Harness("git old", "git a\n{\n}", "echo git\n}");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git");
+        Assert.Equal(new[] { "git old" }, h.E.ListViewItems);
+
+        h = new Harness("git statusx\n}");             // similar entries too
+        Options.Set("complete_auto_history_fuzzy", "1");
+        h.Type("gti status");
+        h.Idle();
+        Assert.Null(h.E.Suggestion);
+
+        // still history: going through it with the keys finds them
+        h = new Harness("git old", "git a\n}");
+        h.Keys("C-up");
+        Assert.Equal("git a\n}", h.Text);
     }
 
     [Fact]
@@ -339,11 +492,13 @@ public class BleShCompatTests
         Assert.Equal(" [.local/bin] ", h.E.Suggestion);
         h.Keys("S-RET");                        // no list entries: S-RET takes the correction
         Assert.Equal("ls .local/bin|", h.State);
-        // a plain prefix completion is not shown inline in list mode (the list has it)
+        // a plain prefix completion is the first entry
         h.Keys("C-u");
         h.Type("ls .local/b");
         Idle(h);
-        Assert.Null(h.E.Suggestion);
+        Assert.Equal("in", h.E.Suggestion);
+        h.Keys("right");
+        Assert.Equal("ls .local/bin|", h.State);
         Options.Set("complete_auto_view_ambiguous", "");
         h.Keys("C-u");
         h.Type("ls .local/bn");
@@ -359,7 +514,7 @@ public class BleShCompatTests
         Assert.Equal("t status", h.E.Suggestion);
         h.Keys("f2");
         Assert.Equal("list", Options.Get("complete_auto_view"));
-        Assert.Null(h.E.Suggestion);
+        Assert.Equal("t status", h.E.Suggestion);      // now from the list
         Assert.NotNull(h.E.ListViewItems);
         h.Keys("f2");
         Assert.Equal("t status", h.E.Suggestion);

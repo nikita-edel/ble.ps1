@@ -47,6 +47,9 @@ because a command that worked in one folder often makes no sense in another:
 
 Both work in the list view too.
 
+**Multi-line entries** are not suggested or listed. They stay in your history, and
+`bleopt complete_auto_history_multiline=1` suggests them like any other entry.
+
 **The same command is listed once.** `cd ~/dev`, `cd ~\dev\`, `cd C:\Users\you\dev` and
 `CD ~/Dev` all go to the same place, so the list view shows only the best of them. This doesn't
 apply to inline suggestions, which only ever show one entry. `bleopt complete_auto_history_merge`
@@ -92,6 +95,10 @@ PS> git s
 - `up` and `down` move through the list and the line shows the selected entry. Keys bound to
   history search (for example `M-j`/`M-k`) move through it too.
 - `S-RET` takes the selected or first entry, and the list continues for the new text.
+- The first entry also shows up after the cursor (`git s` + gray `tatus -s` above), so you see what
+  `S-RET` takes, and the keys for inline suggestions (`right`, `M-f`, `C-j`, ...) work on it. An
+  entry that doesn't start with what you typed isn't shown there.
+  `bleopt complete_auto_view_inline=0` turns this off.
 - `C-g` goes back to what you typed.
 - In multi-line input, the list is for the line you are on.
 

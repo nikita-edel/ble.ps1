@@ -304,7 +304,7 @@ public sealed partial class Editor
             for (int i = Math.Max(0, ma); i < Math.Min(mb, faces.Length); i++) faces[i] = "region_match";
         if (Overwrite && Point < Text.Length && Text[Point] != '\n') faces[Point] = "overwrite_mode";
         m.Faces = faces;
-        if (_suggest != null && Point == Text.Length && Modal == null) m.Suggestion = _suggest;
+        if (Point == Text.Length && Modal == null) m.Suggestion = Suggestion;
 
         int width = Renderer.Width > 0 ? Renderer.Width : Term.Width;
         var layout = LayoutRows(width);
@@ -319,7 +319,8 @@ public sealed partial class Editor
         }
         if (IsSet("prompt_input_left")) m.InputLeft = Expand("prompt_input_left");
         if (IsSet("prompt_input_after")) m.InputAfter = Expand("prompt_input_after");
-        m.InputAfterFirst = Options.Get("prompt_input_after_position") == "before";
+        // the list view's hint continues the typed word, nothing goes between them
+        m.InputAfterFirst = Options.Get("prompt_input_after_position") == "before" && ListHint == null;
 
         if (Info != null) m.Panels.Add(PanelLine.Of(Info, InfoFace));
         if (Menu != null || ListViewActive)

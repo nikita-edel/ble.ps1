@@ -12,7 +12,8 @@ namespace Ble;
 /// up/down (and keys bound to history widgets) select an entry and the line shows it; moving past
 /// either end returns to the typed text. S-RET takes the selected (or first) entry and keeps
 /// listing for the new text, C-g restores the typed text and hides the list, typing continues
-/// from the shown entry, and f2 switches between inline and list.
+/// from the shown entry, and f2 switches between inline and list. The rest of the entry S-RET would
+/// take is also shown after the cursor (complete_auto_view_inline).
 /// In multi-line input the current line is the query (complete_auto_view_multiline).
 /// </summary>
 public sealed partial class Editor
@@ -59,6 +60,9 @@ public sealed partial class Editor
             HideListView();
             return;
         }
+        // navigating: the line shows the selected entry (which can have several lines itself)
+        if (_listItems != null && _listSel >= 0 && _listSel < _listItems.Count
+            && Text.Length >= _listBase && Text.Substring(_listBase) == _listItems[_listSel].Line) return;
         int b = 0;
         if (Text.Contains('\n'))
         {
@@ -66,9 +70,6 @@ public sealed partial class Editor
             if (!Options.GetBool("complete_auto_view_multiline")) { HideListView(); return; }
             b = LineStart(Text.Length);
         }
-        // navigating: the line shows the selected entry
-        if (_listItems != null && _listSel >= 0 && _listSel < _listItems.Count && b == _listBase
-            && Text.Length >= _listBase && Text.Substring(_listBase) == _listItems[_listSel].Line) return;
         if (_listFor == Text && _listSel < 0) return;
         _listSel = -1;
         _listBase = b;
@@ -188,6 +189,20 @@ public sealed partial class Editor
         Text = Text.Substring(0, _listBase) + (_listSel >= 0 ? _listItems[_listSel].Line : _listQuery);
         Point = Text.Length;
         return true;
+    }
+
+    /// <summary>complete_auto_view_inline: the rest of the entry S-RET would take, shown after the cursor like
+    /// an inline suggestion. Null while an entry is selected (the line shows it) and for entries that
+    /// don't start with the typed text. A selection (mark) hides the list, so shift-moves never accept this.</summary>
+    string? ListHint
+    {
+        get
+        {
+            if (!ListViewActive || _listSel >= 0 || _listFor != Text || _listQuery == null || Point != Text.Length || MarkActive
+                || !Options.GetBool("complete_auto_view_inline")) return null;
+            var line = _listItems![0].Line;
+            return line.Length > _listQuery.Length && PathPrefix(line, _listQuery, ignoreCase: true) ? line.Substring(_listQuery.Length) : null;
+        }
     }
 
     /// <summary>S-RET in the list view: takes the selected (or first) entry and lists again for the new text.</summary>

@@ -31,6 +31,7 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 | `complete_auto_history_cwd` | `1` | Prefer history entries you ran in the current folder |
 | `complete_auto_history_validate` | `command:path` | Skip history entries with a command or path that doesn't exist (empty: off) |
 | `complete_auto_history_merge` | `path:case` | List entries that are the same command once: `path` spellings, `case` (empty: off) |
+| `complete_auto_history_multiline` | | `1`: also suggest history entries with several lines |
 | `complete_auto_history_fuzzy` | | `1`: suggest similar history entries (small typos) when nothing else matches |
 | `complete_auto_history_fuzzy_validate` | `command:path` | `complete_auto_history_validate` for those similar entries |
 | `complete_auto_completion` | `1` | Suggestions from PowerShell's completion |
@@ -43,6 +44,7 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 | `complete_auto_view_selected` | `line` | Selected entry: whole `line` highlighted, `entry` text highlighted, or text `color` only |
 | `complete_auto_view_multiline` | `1` | In multi-line input, list entries for the current line |
 | `complete_auto_view_ambiguous` | `1` | With the list, still show ` [correction] ` for a wrong word |
+| `complete_auto_view_inline` | `1` | With the list, also show the entry `S-RET` would take after the cursor |
 
 ## Completion menu
 

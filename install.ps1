@@ -44,7 +44,7 @@ if (Test-Path $dll) {
 }
 Copy-Item "$Path/*" $dest -Force
 # files from a downloaded zip carry the "from the internet" mark, which RemoteSigned refuses to load
-if (Get-Command Unblock-File -ErrorAction Ignore) { Get-ChildItem $dest -File | Unblock-File }
+if (-not $IsLinux) { Get-ChildItem $dest -File | Unblock-File }
 
 if ($locked) { Write-Host 'ble.ps1 is loaded in running PowerShell sessions; they keep the old version until restarted' }
 Write-Host "installed ble $version`: $dest"
