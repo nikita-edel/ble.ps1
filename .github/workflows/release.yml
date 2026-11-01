@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    # a third of the time of windows-latest; the module is the same on every OS
+    runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       # optional: also publish to the PowerShell Gallery when this secret is set. Only whether it is
@@ -68,15 +69,18 @@ jobs:
           $notes -join "`n" | Set-Content notes.md
           Get-Content notes.md
 
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9   # v4.3.1
-        with:
-          dotnet-version: '10.0.x'
+      # the runner comes with the SDK
+      # - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9   # v4.3.1
+      #   with:
+      #     dotnet-version: '10.0.x'
 
-      - name: Build, test, package
+      # tests run locally before a release: ./build.ps1 -Test -E2E
+      - name: Build, package
         shell: pwsh
         run: |
-          Install-Module Pester -MinimumVersion 5.5 -Force -Scope CurrentUser -SkipPublisherCheck
-          ./build.ps1 -Test -Package
+          # Install-Module Pester -MinimumVersion 5.5 -Force -Scope CurrentUser -SkipPublisherCheck
+          # ./build.ps1 -Test -Package
+          ./build.ps1 -Package
 
       - name: GitHub release
         shell: pwsh

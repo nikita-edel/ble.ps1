@@ -155,10 +155,14 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
   CI's pywinpty 3.1.2. Runner-specific, not a regression; unsolved. The owner removed the step from CI
   (2026-10-30): e2e runs locally only (`./build.ps1 -E2E`).
 - Unit tests run on Linux/macOS too: build paths with `Path.DirectorySeparatorChar` / `Path.Combine`
-  (a `\` is part of a file name there), not `.\x` literals. No WSL/Docker on this machine: Linux-only
-  failures show up in CI first. Code that handles paths typed in PowerShell must treat `\` as a
-  separator on every OS (PowerShell does; .NET only on Windows).
+  (a `\` is part of a file name there), not `.\x` literals. The `ci` workflow is disabled on GitHub
+  and the owner tests locally, so Linux-only failures don't show up by themselves. WSL (Ubuntu) is
+  installed, without dotnet or pwsh, and its `/tmp` is wiped when the distro idles. Code that handles
+  paths typed in PowerShell must treat `\` as a separator on every OS (PowerShell does; .NET only on
+  Windows).
 - Releases: `.github/workflows/release.yml`, started by hand (workflow_dispatch), notes = lines
-  added to CHANGELOG.txt since the last GitHub release.
+  added to CHANGELOG.txt since the last GitHub release. Runs on ubuntu-latest and runs no tests
+  (commented out, the owner tests locally). A failed Gallery step can't be rerun, because the GitHub
+  release already exists by then: publish that version by hand.
 - Ideas not done yet: ble.sh contrib modules beyond fzf; more context completions (`M-~` user,
   `M-@` host are n/a on Windows); a `build.ps1 -Uninstall` switch.
