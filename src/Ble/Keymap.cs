@@ -59,6 +59,7 @@ public sealed class Keymap
     public bool TryGet(string seq, out Binding binding) => _map.TryGetValue(seq, out binding!);
     public bool IsPrefix(string seq) => _prefixes.ContainsKey(seq) || (EscapeIsMeta && seq == "ESC");
     public void Clear() { _map.Clear(); _prefixes.Clear(); }
+    public bool IsEmpty => _map.Count == 0;
 }
 
 public static class Keymaps
@@ -67,7 +68,37 @@ public static class Keymaps
 
     public static readonly string[] Names = ["emacs", "vi_imap", "vi_nmap", "vi_xmap", "vi_smap"];
 
+    /// <summary>ble-bind -Always: checked before everything else, in every mode.</summary>
+    public static readonly Keymap Always = new("always");
+
+    // the bindings Reset made, for RestoreDefault
+    static Dictionary<string, Dictionary<string, Binding>> _defaults = new();
+
     static Keymaps() { Reset(); }
+
+    /// <summary>ble-bind -Reset: back to the default of a key sequence, in one keymap or (null) in all of
+    /// them, which also drops its -Always binding. Keys that vi handles itself have no default binding:
+    /// removing what the user bound gives them back.</summary>
+    public static void RestoreAllDefaults(string? keymap = null)
+    {
+        foreach (var name in keymap != null ? [keymap] : Names)
+        {
+            Get(name).Clear();
+            foreach (var kv in _defaults[name]) Get(name).Bind(kv.Key.Split(' '), kv.Value);
+        }
+        if (keymap == null) Always.Clear();
+    }
+
+    public static void RestoreDefault(string[] seq, string? keymap = null)
+    {
+        var key = string.Join(' ', seq);
+        foreach (var name in keymap != null ? [keymap] : Names)
+        {
+            _defaults[name].TryGetValue(key, out var binding);
+            Get(name).Bind(seq, binding);
+        }
+        if (keymap == null) Always.Bind(seq, null);
+    }
 
     public static Keymap Get(string name)
     {
@@ -80,6 +111,7 @@ public static class Keymaps
     public static void Reset()
     {
         Maps.Clear();
+        Always.Clear();
         var emacs = new Keymap("emacs") { EscapeIsMeta = true };
         var imap = new Keymap("vi_imap");
         Maps["emacs"] = emacs;
@@ -101,6 +133,7 @@ public static class Keymaps
         BindViInsertMeta(imap);
         BindBlePs1Extras(emacs);
         BindBlePs1Extras(imap);
+        _defaults = Maps.ToDictionary(m => m.Key, m => m.Value.Bindings.ToDictionary(b => b.Key, b => b.Value, StringComparer.Ordinal));
     }
 
     static void B(Keymap k, string widget, params string[] keys)

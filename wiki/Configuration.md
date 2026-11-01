@@ -8,6 +8,10 @@ from there. Everything is set with four commands, which work like their ble.sh v
 | `ble-bind` | keys ([Key Bindings](Key-Bindings)) | `ble-bind -P`, widgets: `ble-bind -L` |
 | `ble-sabbrev` | abbreviations ([Extending](Extending)) | `ble-sabbrev` |
 
+`-Reset` goes back to the defaults: `bleopt -Reset complete_auto_view`, `ble-face -Reset region`,
+`ble-bind -Reset 'C-r'`. It takes several names, wildcards for options and faces, and `ble-bind -m`
+limits it to one keymap. Without a name it resets everything that command sets.
+
 ## Example
 
 ```powershell

@@ -9,6 +9,8 @@ namespace Ble;
 /// <example>ble-bind -c 'M-g' { git status }</example>
 /// <example>ble-bind -x 'C-t' { $global:READLINE_LINE += (Get-Date -f s) }</example>
 /// <example>ble-bind -m vi_xmap -s 'Y' '" + y'   # keyboard macro: yank selection to the clipboard</example>
+/// <example>ble-bind -Always -f 'M-u' fzf-file-widget   # every mode, before anything else</example>
+/// <example>ble-bind -Reset 'C-r', 'C-t'   # back to the defaults</example>
 [Cmdlet(VerbsLifecycle.Invoke, "BleBind", DefaultParameterSetName = "Print")]
 [Alias("ble-bind")]
 public sealed class InvokeBleBindCommand : PSCmdlet
@@ -18,6 +20,12 @@ public sealed class InvokeBleBindCommand : PSCmdlet
     [Parameter(ParameterSetName = "Command")][Alias("c")] public string? Command { get; set; }
     [Parameter(ParameterSetName = "Execute")][Alias("x")] public string? Execute { get; set; }
     [Parameter(ParameterSetName = "Macro")][Alias("s")] public string? Macro { get; set; }
+    /// <summary>The binding works in every keymap and mode and wins over everything, also an open menu or prompt.</summary>
+    [Parameter] public SwitchParameter Always { get; set; }
+    /// <summary>Gives keys their default back: in all keymaps (also dropping -Always bindings), or in the one from -m.
+    /// Without keys, all of them.</summary>
+    [Parameter(ParameterSetName = "Reset", Mandatory = true)][Alias("r")] public SwitchParameter Reset { get; set; }
+    [Parameter(Position = 0, ParameterSetName = "Reset", ValueFromRemainingArguments = true)] public string[]? Keys { get; set; }
     [Parameter(Position = 0, ParameterSetName = "Function")]
     [Parameter(Position = 0, ParameterSetName = "Macro")]
     [Parameter(Position = 0, ParameterSetName = "Command")]
@@ -56,26 +64,36 @@ public sealed class InvokeBleBindCommand : PSCmdlet
             Host.UI.WriteLine(k?.Name ?? "(unknown)");
             return;
         }
+        if (Always && Keymap != null)
+        {
+            ThrowTerminatingError(new ErrorRecord(new ArgumentException("ble-bind: -Always is for all keymaps, leave out -m"), "BadArguments", ErrorCategory.InvalidArgument, Keymap));
+            return;
+        }
+        if (Reset)
+        {
+            if (Keymap != null) Ble.Keymaps.Get(Keymap);   // unknown keymap: nothing changes
+            if (Keys == null || Keys.Length == 0)
+            {
+                Ble.Keymaps.RestoreAllDefaults(Keymap);
+                return;
+            }
+            var specs = new List<string[]>();
+            foreach (var key in Keys)
+            {
+                try { specs.Add(KeyNames.ParseSpec(key)); }
+                catch (FormatException ex) { ThrowTerminatingError(new ErrorRecord(ex, "BadKey", ErrorCategory.InvalidArgument, key)); return; }
+            }
+            foreach (var s in specs) Ble.Keymaps.RestoreDefault(s, Keymap);
+            return;
+        }
         var kmName = Keymap ?? (Options.Get("default_keymap") == "vi" ? "vi_imap" : "emacs");
-        var km = Ble.Keymaps.Get(kmName);
+        var km = Always ? Ble.Keymaps.Always : Ble.Keymaps.Get(kmName);
         if (Function == null && Command == null && Execute == null && Macro == null)
         {
-            foreach (var name in Keymap != null ? [Keymap] : Ble.Keymaps.Names)
-            {
-                foreach (var kv in Ble.Keymaps.Get(name).Bindings)
-                {
-                    var spec = "'" + kv.Key.Replace("'", "''") + "'";
-                    var b = kv.Value;
-                    WriteObject(b.Kind switch
-                    {
-                        BindingKind.Widget => $"ble-bind -m {name} -f {spec} {b.Widget}",
-                        BindingKind.Command => $"ble-bind -m {name} -c {spec} {{{b.Script}}}",
-                        BindingKind.Macro => $"ble-bind -m {name} -s {spec} '{b.Widget.Replace("'", "''")}'",
-                        BindingKind.UserWidget => $"ble-bind -m {name} -f {spec} {b.Widget}",
-                        _ => $"ble-bind -m {name} -x {spec} {{{b.Script}}}",
-                    });
-                }
-            }
+            if (!Always)
+                foreach (var name in Keymap != null ? [Keymap] : Ble.Keymaps.Names)
+                    PrintBindings(Ble.Keymaps.Get(name), $"ble-bind -m {name}");
+            if (Keymap == null) PrintBindings(Ble.Keymaps.Always, "ble-bind -Always");
             return;
         }
         var keys = Function ?? Command ?? Execute ?? Macro!;
@@ -115,19 +133,54 @@ public sealed class InvokeBleBindCommand : PSCmdlet
         }
         km.Bind(seq, binding);
     }
+
+    void PrintBindings(Keymap keymap, string command)
+    {
+        foreach (var kv in keymap.Bindings)
+        {
+            var spec = "'" + kv.Key.Replace("'", "''") + "'";
+            var b = kv.Value;
+            WriteObject(b.Kind switch
+            {
+                BindingKind.Widget => $"{command} -f {spec} {b.Widget}",
+                BindingKind.Command => $"{command} -c {spec} {{{b.Script}}}",
+                BindingKind.Macro => $"{command} -s {spec} '{b.Widget.Replace("'", "''")}'",
+                BindingKind.UserWidget => $"{command} -f {spec} {b.Widget}",
+                _ => $"{command} -x {spec} {{{b.Script}}}",
+            });
+        }
+    }
 }
 
-/// <summary>bleopt: show or set options. Usage: bleopt, bleopt name, bleopt name=value, bleopt name value.</summary>
+/// <summary>bleopt: show or set options. Usage: bleopt, bleopt name, bleopt name=value, bleopt name value,
+/// bleopt -Reset [PATTERN...] (back to the defaults; without a pattern all of them).</summary>
 [Cmdlet(VerbsLifecycle.Invoke, "BleOpt")]
 [Alias("bleopt")]
 public sealed class InvokeBleOptCommand : PSCmdlet
 {
     [Parameter(Position = 0, ValueFromRemainingArguments = true)]
     public object[]? Arguments { get; set; }
+    /// <summary>Restores defaults: of the options named (wildcards work), or of all of them.</summary>
+    [Parameter][Alias("r")] public SwitchParameter Reset { get; set; }
 
     protected override void ProcessRecord()
     {
         var args = CmdletArgs.Rejoin((Arguments ?? []).Select(CmdletArgs.Unsplit), n => Options.Exists(n)).ToArray();
+        if (Reset)
+        {
+            if (args.Length == 0)
+            {
+                foreach (var n in Options.Names.ToList()) Options.ResetOption(n);
+                return;
+            }
+            foreach (var a in args)
+            {
+                var s = a?.ToString() ?? "";
+                try { foreach (var n in Options.Match(s)) Options.ResetOption(n); }
+                catch (ArgumentException ex) { WriteError(new ErrorRecord(ex, "UnknownOption", ErrorCategory.InvalidArgument, s)); }
+            }
+            return;
+        }
         if (args.Length == 0)
         {
             foreach (var n in Options.Names) WriteObject($"bleopt {n}={Options.Quote(Options.GetRaw(n))}");

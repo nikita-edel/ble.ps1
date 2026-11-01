@@ -266,6 +266,13 @@ public static class Options
         return list;
     }
 
+    /// <summary>bleopt -Reset: the default of one option. Options made with := have none and stay.</summary>
+    public static void ResetOption(string name)
+    {
+        name = Canonical(name);
+        if (Defaults.TryGetValue(name, out var d)) Set(name, d);
+    }
+
     public static void Reset()
     {
         foreach (var name in Order.Where(n => !Defaults.ContainsKey(n)).ToList()) { Values.Remove(name); Order.Remove(name); }

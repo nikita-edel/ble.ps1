@@ -1,3 +1,7 @@
+0.3.7
+- ble-bind -Always: a key for every mode that wins over everything
+- ble* -Reset: restore default value
+
 0.3.6
 - complete_auto_view_tips: turn off the row with the keys under the list view
 - complete_auto_view_min_width/height: inline suggestions in small windows

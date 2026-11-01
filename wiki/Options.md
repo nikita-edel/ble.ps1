@@ -1,5 +1,6 @@
 Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a switch off.
-`bleopt` alone lists all options with their current values.
+`bleopt` alone lists all options with their current values. `bleopt -Reset name` goes back to the
+default, `bleopt -Reset 'complete_auto_*'` for several, and `bleopt -Reset` for all of them.
 
 ## General
 

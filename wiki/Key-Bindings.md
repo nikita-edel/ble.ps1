@@ -19,11 +19,24 @@ ble-bind -m vi_nmap -f 'H' beginning-of-line        # in another keymap
 ble-bind -f 'C-x t' -                               # remove a binding
 ble-bind -s 'M-g' 'C-a g i t SP C-e'                # key -> other keys (macro), one key per word
 ble-bind -c 'M-s' { git status }                    # run a command, then redraw the line
+ble-bind -Always -f 'M-u' fzf-file-widget           # in every mode, before anything else
+ble-bind -Reset 'C-r', 'C-t'                        # back to the defaults
 ble-bind -x 'C-t' { $global:READLINE_LINE += 'x' }  # edit the line from PowerShell
 ble-bind -m vi_nmap -cursor 2                       # cursor shape for a keymap
 ```
 
 `-x` and `-c` are explained in [Extending](Extending).
+
+`-Always` makes a key work the same everywhere: every keymap, also vi's operator-pending state,
+and before anything else that would take the key. An open menu, a search, a `:` prompt, a waiting
+`d` or `f`, and `C-v` all end, and the key does what you bound. That also beats keys vi handles
+itself, so `ble-bind -Always -f h undo` takes `h` away in normal mode. Keys bound to history
+widgets still move through the [list view](Completion-and-Suggestions#list-view). It works with
+`-f`, `-s`, `-c` and `-x`, and `ble-bind -Always -f KEY -` removes it. `ble-bind -Always` alone lists them.
+
+`-Reset` takes a list of keys and gives them their defaults back in all keymaps, and removes their
+`-Always` bindings. With `-m` it changes only that keymap and leaves `-Always` bindings alone.
+Without keys it does that for every key.
 
 ## Emacs mode
 

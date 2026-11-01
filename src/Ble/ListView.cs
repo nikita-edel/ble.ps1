@@ -192,7 +192,7 @@ public sealed partial class Editor
         int dir;
         if (k.Name == "up") dir = -1;
         else if (k.Name == "down") dir = 1;
-        else if (Keymaps.Get(Keymap).TryGet(k.Name, out var b) && b.Kind == BindingKind.Widget)
+        else if ((Keymaps.Always.TryGet(k.Name, out var b) || Keymaps.Get(Keymap).TryGet(k.Name, out b)) && b.Kind == BindingKind.Widget)
         {
             // keys bound to history widgets move through the list too: ...-prev / ...-search-forward go up
             // (newer), ...-next / ...-search-backward go down (older, like vi's j)

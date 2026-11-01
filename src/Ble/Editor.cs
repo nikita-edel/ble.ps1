@@ -389,6 +389,50 @@ public sealed partial class Editor
 
     public void Dispatch(KeyInput k)
     {
+        if (DispatchAlways(k)) return;
+        DispatchNormal(k);
+    }
+
+    readonly List<KeyInput> _alwaysPending = new();
+
+    // ble-bind -Always: before modal prompts, vi and the list view. Whatever was going on ends.
+    bool DispatchAlways(KeyInput k)
+    {
+        var km = Keymaps.Always;
+        if (km.IsEmpty) return false;
+        var seq = string.Join(' ', _alwaysPending.Select(p => p.Name).Append(k.Name));
+        if (km.TryGet(seq, out var b))
+        {
+            _alwaysPending.Clear();
+            bool listKey = b.Kind == BindingKind.Widget && (ListUpWidgets.Contains(b.Widget) || ListDownWidgets.Contains(b.Widget));
+            if (listKey && ListViewKey(k)) return true;
+            LeaveKeyStates();
+            InvokeBinding(b, k);
+            if (Keymap is "vi_nmap" or "vi_xmap") ViClampNormal();
+            return true;
+        }
+        if (km.IsPrefix(seq)) { _alwaysPending.Add(k); return true; }
+        // the start of an -Always sequence that didn't finish: they were ordinary keys
+        if (_alwaysPending.Count > 0)
+        {
+            var keys = _alwaysPending.ToList();
+            _alwaysPending.Clear();
+            foreach (var p in keys) DispatchNormal(p);
+        }
+        return false;
+    }
+
+    void LeaveKeyStates()
+    {
+        _pending.Clear();
+        if (_viKeys.Count > 0) { _viKeys.Clear(); ApplyCursorShape(); }
+        if (Modal == null) return;
+        if (Menu != null) CloseMenu();
+        Modal = null; Info = null; MatchRegion = null;
+    }
+
+    void DispatchNormal(KeyInput k)
+    {
         if (_viRecording != null && !_viReplaying && Keymap == "vi_imap") _viRecording.Add(k);
         if (ListViewKey(k)) return;
         if (Modal != null)

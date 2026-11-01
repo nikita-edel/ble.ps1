@@ -64,7 +64,89 @@ Describe 'bleopt' {
     }
 }
 
+Describe '-Reset' {
+    AfterAll { bleopt -Reset; ble-bind -Reset; ble-face -Reset }
+
+    It 'bleopt -Reset restores one option' {
+        bleopt prompt_ps2='x' complete_menu_style=desc
+        bleopt -Reset prompt_ps2
+        bleopt prompt_ps2 | Should -Be "bleopt prompt_ps2='>> '"
+        bleopt complete_menu_style | Should -Be "bleopt complete_menu_style='desc'"
+        bleopt -r complete_menu_style
+        bleopt complete_menu_style | Should -Be "bleopt complete_menu_style='align'"
+    }
+    It 'bleopt -Reset takes several names and wildcards' {
+        bleopt complete_auto_delay=7 complete_auto_view=list prompt_ps2='x'
+        bleopt -Reset 'complete_auto_*' prompt_ps2
+        bleopt complete_auto_delay | Should -Be "bleopt complete_auto_delay='100'"
+        bleopt complete_auto_view | Should -Be "bleopt complete_auto_view='inline'"
+        bleopt prompt_ps2 | Should -Be "bleopt prompt_ps2='>> '"
+    }
+    It 'bleopt -Reset restores a scriptblock option' {
+        bleopt prompt_rps1 { 'x' }
+        bleopt -Reset prompt_rps1
+        bleopt prompt_rps1 | Should -Be "bleopt prompt_rps1=''"
+    }
+    It 'bleopt -Reset alone restores everything' {
+        bleopt complete_auto_delay=7 prompt_ps2='x'
+        bleopt -Reset
+        bleopt complete_auto_delay | Should -Be "bleopt complete_auto_delay='100'"
+        bleopt prompt_ps2 | Should -Be "bleopt prompt_ps2='>> '"
+    }
+    It 'bleopt -Reset reports an unknown option' {
+        { bleopt -Reset no_such_option -ErrorAction Stop } | Should -Throw '*unknown option*'
+    }
+    It 'ble-face -Reset restores a face' {
+        $default = ble-face command_builtin
+        ble-face command_builtin=fg=33
+        ble-face -Reset command_builtin
+        ble-face command_builtin | Should -Be $default
+    }
+    It 'ble-bind -Reset alone restores every key' {
+        ble-bind -m emacs -f 'C-t' undo
+        ble-bind -m vi_nmap -f 'K' undo
+        ble-bind -Always -f 'f9' undo
+        ble-bind -Reset
+        ble-bind -m emacs | Should -Contain "ble-bind -m emacs -f 'C-t' transpose-chars"
+        ble-bind -m vi_nmap | Should -Not -Contain "ble-bind -m vi_nmap -f 'K' undo"
+        ble-bind -Always | Should -BeNullOrEmpty
+    }
+    It 'ble-bind -m X -Reset restores one keymap' {
+        ble-bind -m emacs -f 'C-t' undo
+        ble-bind -m vi_imap -f 'C-t' undo
+        ble-bind -m vi_imap -Reset
+        ble-bind -m vi_imap | Should -Contain "ble-bind -m vi_imap -f 'C-t' transpose-chars"
+        ble-bind -m emacs | Should -Contain "ble-bind -m emacs -f 'C-t' undo"
+    }
+}
+
 Describe 'ble-bind' {
+    It '-Always binds outside the keymaps and -Reset drops it' {
+        ble-bind -Always -f 'f9' undo
+        ble-bind -Always | Should -Be "ble-bind -Always -f 'f9' undo"
+        ble-bind | Should -Contain "ble-bind -Always -f 'f9' undo"
+        ble-bind -m emacs | Should -Not -Contain "ble-bind -Always -f 'f9' undo"
+        ble-bind -Reset 'f9'
+        ble-bind -Always | Should -BeNullOrEmpty
+    }
+    It '-Always takes no keymap' {
+        { ble-bind -m emacs -Always -f 'f9' undo } | Should -Throw '*-Always*'
+    }
+    It '-Reset restores a default in all keymaps' {
+        ble-bind -m emacs -f 'C-t' undo
+        ble-bind -m vi_imap -f 'C-t' undo
+        ble-bind -Reset 'C-t', 'C-r'
+        ble-bind -m emacs | Should -Contain "ble-bind -m emacs -f 'C-t' transpose-chars"
+        ble-bind -m vi_imap | Should -Contain "ble-bind -m vi_imap -f 'C-t' transpose-chars"
+    }
+    It '-Reset with -m leaves the other keymaps' {
+        ble-bind -m emacs -f 'C-t' undo
+        ble-bind -m vi_imap -f 'C-t' undo
+        ble-bind -m emacs -Reset 'C-t'
+        ble-bind -m emacs | Should -Contain "ble-bind -m emacs -f 'C-t' transpose-chars"
+        ble-bind -m vi_imap | Should -Contain "ble-bind -m vi_imap -f 'C-t' undo"
+        ble-bind -Reset 'C-t'
+    }
     It 'binds, prints and removes keys' {
         ble-bind -f 'C-x t' transpose-chars
         ble-bind -m emacs | Should -Contain "ble-bind -m emacs -f 'C-x t' transpose-chars"
