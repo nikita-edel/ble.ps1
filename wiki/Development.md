@@ -29,8 +29,8 @@ the last published release as the release notes, builds, and creates the GitHub 
 `ble-<version>.zip`. With a `PSGALLERY_API_KEY` secret it also publishes to the PowerShell Gallery.
 It runs no tests, so run them locally first.
 
-The end-to-end tests start `pwsh` in a ConPTY (pywinpty) and rebuild the screen with pyte. They
-need Python and `pip install -r tests/e2e/requirements.txt`.
+The end-to-end tests start `pwsh` in a terminal (ConPTY through pywinpty on Windows, a pty elsewhere)
+and rebuild the screen with pyte. They need Python and `pip install -r tests/e2e/requirements.txt`.
 
 Two scripts help when debugging:
 

@@ -33,8 +33,8 @@ combinations (for example some `C-S-` keys).
 
 ## Performance
 
-ble.ps1's own work per key (highlighting, history, drawing) takes well under a millisecond. When
-something feels slow, it is usually PowerShell itself:
+ble.ps1's own work per key (highlighting, history, drawing) takes well under a millisecond, about
+as long as PSReadLine on Linux. When something feels slow, it is usually PowerShell itself:
 
 - **Completion** (`TabExpansion2`) takes about 1 ms for most input, 10-30 ms for command names, and
   longer in folders with thousands of files. ble.ps1 only asks after you pause
@@ -55,6 +55,19 @@ pwsh -NoProfile -File tests/perf/bench.ps1            # in the ble.ps1 folder, a
 pwsh -NoProfile -File tests/perf/bench.ps1 -Profile   # with your profile's modules loaded
 ```
 
+## A warning says the 'ListView' prediction is disabled
+
+That is PSReadLine, not ble.ps1: `Set-PSReadLineOption -PredictionViewStyle ListView` in your profile
+warns when the window is under 50 columns or 5 rows, and it does that even though ble.ps1 does the
+editing, and `-WarningAction` doesn't stop it. Use `InlineView` when the window is too small:
+
+```powershell
+$view = if ([Console]::WindowWidth -ge 50 -and [Console]::WindowHeight -ge 5) { 'ListView' } else { 'InlineView' }
+Set-PSReadLineOption -PredictionViewStyle $view
+```
+
+For ble.ps1's own list in small windows, see `complete_auto_view_min_width` in [Options](Options).
+
 ## Does it work in Windows PowerShell 5.1?
 
 No. It needs PowerShell 7.4 or later (`winget install Microsoft.PowerShell`); both can be
@@ -62,5 +75,13 @@ installed side by side.
 
 ## Does it work on Linux or macOS?
 
-It is built and tested on Windows. The code avoids Windows-only APIs where possible, but other
-systems are not tested yet.
+Yes. Windows and Linux are both used daily; macOS gets the unit tests only.
+
+Some things depend on the terminal. Most Linux terminals send the same thing for `S-RET` and `RET`,
+so `S-RET` can't work there. `ble-bind -k` shows what a key sends. If your terminal can send a
+different sequence, ble.ps1 understands `ESC [ 13 ; 2 u` and `ESC [ 27 ; 2 ; 13 ~`. In Ghostty, for
+example:
+
+```
+keybind = shift+enter=text:\x1b[13;2u
+```

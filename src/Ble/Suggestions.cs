@@ -1,3 +1,5 @@
+using System.Management.Automation;
+
 namespace Ble;
 
 /// <summary>
@@ -167,7 +169,9 @@ public sealed partial class Editor
             int ri = cs.ReplacementIndex, rl = cs.ReplacementLength;
             if (ri < 0 || rl <= 0 || ri + rl != Text.Length) return false;
             var word = Text.Substring(ri, rl);
-            var c = UserSeparators(word, cs.Items[0].CompletionText);
+            var first = cs.Items.FirstOrDefault(i => !HideCommandPath(i, word));
+            if (first == null) return false;
+            var c = UserSeparators(word, first.CompletionText);
             if (PathPrefix(c, word, ignoreCase: true))
             {
                 if (c.Length <= word.Length || ListViewEnabled) return false;   // the list shows these
@@ -182,8 +186,15 @@ public sealed partial class Editor
         var amb = CompleteAmbiguous();
         if (amb == null || amb.Items.Count == 0 || amb.ReplacementIndex + amb.ReplacementLength != Text.Length) return false;
         var w0 = Text.Substring(amb.ReplacementIndex, amb.ReplacementLength);
-        return SetAmbiguousSuggestion(amb.ReplacementIndex, UserSeparators(w0, amb.Items[0].CompletionText));
+        var best = amb.Items.FirstOrDefault(i => !HideCommandPath(i, w0));
+        return best != null && SetAmbiguousSuggestion(amb.ReplacementIndex, UserSeparators(w0, best.CompletionText));
     }
+
+    // complete_auto_hide_command_paths: PowerShell also offers /usr/bin/ls for ls when a function or
+    // alias has the same name. A word with a separator in it is a path the user is typing, so that stays.
+    static bool HideCommandPath(CompletionItem it, string word) =>
+        it.Type == CompletionResultType.Command && Options.GetBool("complete_auto_hide_command_paths")
+        && word.IndexOfAny(['/', '\\']) < 0 && it.CompletionText.IndexOfAny(['/', '\\']) >= 0;
 
     bool SetAmbiguousSuggestion(int start, string insert)
     {

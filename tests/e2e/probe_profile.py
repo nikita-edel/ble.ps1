@@ -4,7 +4,11 @@ import threading
 import time
 
 import pyte
-from winpty import PtyProcess
+
+if sys.platform == "win32":
+    from winpty import PtyProcess
+else:
+    from unixpty import PtyProcess
 
 screen = pyte.Screen(120, 30)
 stream = pyte.Stream(screen)

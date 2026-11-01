@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Management.Automation;
 using Ble;
 using Xunit;
@@ -264,6 +265,169 @@ public class BleShCompatTests
         Assert.Null(h.E.Suggestion);
         h.Keys("right");
         Assert.Equal("git s|", h.State);
+    }
+
+    static string Screen(Harness h)
+    {
+        h.T.Output.Clear();
+        h.E.SafeRender();
+        return h.T.Output.ToString();
+    }
+
+    [Fact]
+    public void IdleCompletionLeavesItWhenAKeyIsWaiting()
+    {
+        var h = new Harness();
+        Options.Set("complete_auto_completion", "1");
+        Options.Set("complete_ambiguous", "1");
+        h.S.CompleteFrom("nothing");
+        h.Type("zq");
+        h.T.Type("x");
+        h.Idle();
+        Assert.Equal(0, h.S.CompleteCalls);
+    }
+
+    [Fact]
+    public void ListViewTipsRowCanBeTurnedOff()
+    {
+        var h = new Harness("git a", "git b", "git c");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git").Keys("down");
+        Assert.Contains("up/down: select", Screen(h));
+
+        Options.Set("complete_auto_view_tips", "0");
+        Assert.DoesNotContain("up/down: select", Screen(h));
+    }
+
+    [Fact]
+    public void ListViewGetsTheTipsRowWhenTipsAreOff()
+    {
+        var h = new Harness("git a", "git b", "git c");
+        Options.Set("complete_auto_view", "list");
+        h.T.Height = 6;
+        h.Type("git");
+        int With() => Regex.Matches(Screen(h), @"\[History\]").Count;
+        int on = With();
+        Options.Set("complete_auto_view_tips", "0");
+        Assert.Equal(on + 1, With());
+    }
+
+    [Fact]
+    public void SmallWindowGetsInlineSuggestionsInsteadOfTheList()
+    {
+        var h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_view_min_width", "50");
+        Options.Set("complete_auto_view_min_height", "10");
+        h.T.Width = 40;
+        h.Type("git s");
+        Assert.False(h.E.ListViewActive);
+        Assert.Equal("tatus", h.E.Suggestion);
+        h.Keys("right");
+        Assert.Equal("git status|", h.State);
+
+        h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_view_min_height", "10");
+        h.T.Height = 9;
+        h.Type("git s");
+        Assert.False(h.E.ListViewActive);
+    }
+
+    [Fact]
+    public void SuggestionInASmallWindowFollowsTheInputLikeTheListHint()
+    {
+        var h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_view_min_width", "50");
+        Options.Set("prompt_input_after", "##");
+        Options.Set("prompt_input_after_position", "before");
+        h.T.Width = 40;
+        h.Type("git s");
+        Assert.False(h.E.BuildModel().InputAfterFirst);
+        Options.Set("complete_auto_view", "inline");
+        Assert.True(h.E.BuildModel().InputAfterFirst);
+    }
+
+    [Fact]
+    public void ResizingAcrossTheLimitsSwitchesBetweenListAndInline()
+    {
+        var h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_view_min_width", "50");
+        h.Type("git s");
+        Assert.True(h.E.ListViewActive);
+
+        h.T.Width = 40;
+        h.E.CheckListViewFit();
+        Assert.False(h.E.ListViewActive);
+        Assert.Equal("tatus", h.E.Suggestion);
+
+        h.T.Width = 80;
+        h.E.CheckListViewFit();
+        Assert.True(h.E.ListViewActive);
+    }
+
+    [Fact]
+    public void ListViewHasNoSizeLimitByDefault()
+    {
+        var h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        h.T.Width = 20; h.T.Height = 5;
+        h.Type("git s");
+        Assert.True(h.E.ListViewActive);
+    }
+
+    [Fact]
+    public void CommandPathsAreLeftOutOfSuggestionsWhenAsked()
+    {
+        var h = new Harness();
+        Options.Set("complete_auto_completion", "1");
+        Options.Set("complete_auto_view", "list");
+        h.S.CompleteFrom("ls", "lsattr");
+        var paths = h.S.Completer!;
+        h.S.Completer = (text, cursor) =>
+        {
+            var cs = paths(text, cursor);
+            if (cs != null && text.StartsWith("ls", StringComparison.Ordinal))
+                cs.Items.Insert(1, new CompletionItem("/usr/bin/ls", "ls", "", CompletionResultType.Command));
+            return cs;
+        };
+        h.Type("ls").Idle();
+        Assert.Contains("/usr/bin/ls", h.E.ListViewItems!);
+
+        h.E.StartLine();
+        Options.Set("complete_auto_hide_command_paths", "1");
+        h.Type("ls").Idle();
+        Assert.DoesNotContain("/usr/bin/ls", h.E.ListViewItems!);
+        Assert.Contains("lsattr", h.E.ListViewItems!);
+    }
+
+    [Fact]
+    public void CommandPathsStayWhenThePathIsBeingTyped()
+    {
+        var h = new Harness();
+        Options.Set("complete_auto_completion", "1");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_hide_command_paths", "1");
+        h.S.CompleteFrom("/usr/bin/ls");
+        h.Type("/usr/bin/l").Idle();
+        Assert.Contains("/usr/bin/ls", h.E.ListViewItems!);
+    }
+
+    [Fact]
+    public void InlineSuggestionSkipsACommandPath()
+    {
+        var h = new Harness();
+        Options.Set("complete_auto_completion", "1");
+        Options.Set("complete_auto_hide_command_paths", "1");
+        h.S.Completer = (text, cursor) => new CompletionSet(0, cursor, new List<CompletionItem>
+        {
+            new("/usr/bin/lsx", "lsx", "", CompletionResultType.Command),
+            new("lsattr", "lsattr", "", CompletionResultType.Command),
+        });
+        h.Type("ls").Idle();
+        Assert.Equal("attr", h.E.Suggestion);
     }
 
     [Fact]

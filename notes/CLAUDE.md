@@ -12,7 +12,7 @@ language (the owner does not want docs that read as AI-generated).
 ```powershell
 ./build.ps1                 # Release build -> out/ble (psd1, psm1, Ble.dll)
 ./build.ps1 -Test           # + xUnit (tests/Ble.Tests) + Pester (tests/Module.Tests.ps1)
-./build.ps1 -E2E            # + real-terminal tests (pwsh in ConPTY via pywinpty, screen via pyte)
+./build.ps1 -E2E            # + real-terminal tests (pwsh in ConPTY via pywinpty or a Linux pty, screen via pyte)
 ./build.ps1 -Package        # out/ble-<version>.zip: install.ps1, LICENSE, ble/
 ./build.ps1 -Install        # runs install.ps1 -Path out/ble -> Documents\PowerShell\Modules\ble\<version> (removes other versions)
 ```
@@ -94,6 +94,9 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
   even after `ESC[?2004h` (checked in ConPTY). Pastes are recognized as bursts instead (keys
   available at once after the editor idled): `TakeViPaste` in ViExtra.cs, and `edit_paste_newline`
   for RET. FakeTerminal: keys queued without `<pause>` count as one burst.
+- .NET's Unix console differs from Windows: `Console.CursorLeft` asks the terminal (ESC[6n), LF/C-_/C-]
+  arrive as Ctrl+Enter/Ctrl+7/Ctrl+5 (`KeyNames.FromConsoleKey` undoes that), and sequences it doesn't know
+  arrive as ESC plus loose characters (`Editor.TakeEscapeSequence`).
 - PowerShell's host already moves the prompt to a new line after `-NoNewline` output, so
   ble.sh's `prompt_eol_mark` cannot be detected (checked in ConPTY); the option is accepted only.
 - `.blerc` support (`BleRc.cs`) expands words when a command runs, not while lexing, so `$VAR`
@@ -138,7 +141,8 @@ tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTe
   `$ps_config\*.ps1` (= `Documents\PowerShell\Config`): variables, setup (PSReadLine settings and
   starship), alias, functions, **ble.ps1** (the ble config: vi mode, cursor shapes, Alt+J/K
   history search, `ble-bind -m vi_xmap -s 'Y' '" + y'` for clipboard, keymap_vi_mode_show disabled).
-- The owner uses vi mode, Windows Terminal, and starship. German Windows (error messages in German).
+- The owner uses vi mode and starship, on Arch Linux with Ghostty and pwsh in `~/.config/powershell`, and on
+  German Windows with Windows Terminal (error messages in German). The same profile runs on both.
 - GitHub remote: `git@github.com:nikita-edel/ble.ps1.git`.
 
 ## Open items

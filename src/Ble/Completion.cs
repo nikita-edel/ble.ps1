@@ -240,6 +240,8 @@ public sealed partial class Editor
     CompletionSet? CompleteAt(string text, int cursor)
     {
         if (_completeCache.TryGetValue((text, cursor), out var cached)) return cached;
+        // an idle task can ask several times (prefix, then ambiguous): the key goes first
+        if (_idleTask && Term.KeyAvailable) return null;
         bool stopped = false;
         var r = Shell.Complete(text, cursor, _idleTask ? () => stopped = stopped || Term.KeyAvailable : null);
         if (stopped) return null;   // incomplete: not cached

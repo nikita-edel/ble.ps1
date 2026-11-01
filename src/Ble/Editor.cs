@@ -152,6 +152,7 @@ public sealed partial class Editor
             if (Term.KeyAvailable)
             {
                 var k = KeyNames.FromConsoleKey(Term.ReadKey());
+                if (k?.Name == "ESC" && TakeEscapeSequence(out var key)) { if (key != null) return key.Value; continue; }
                 if (k != null) return k.Value;
                 continue;
             }
@@ -161,6 +162,7 @@ public sealed partial class Editor
             if (w != Renderer.Width || h != Renderer.Height)
             {
                 Renderer.AdjustForResize(w);
+                CheckListViewFit();
                 SafeRender();
             }
             int capsRefresh = Options.GetInt("capslock_refresh", 0);
@@ -168,6 +170,40 @@ public sealed partial class Editor
             RunIdle();
             Term.Wait(10);
         }
+    }
+
+    // .NET splits an escape sequence it doesn't know into ESC and loose characters, which vi mode would run
+    // as commands (ESC [ 1 3 ; 2 u: ... undo). Returns true if ESC started a sequence: then 'key' is its key,
+    // or null for one that means nothing here. Anything else goes back to be read as usual.
+    bool TakeEscapeSequence(out KeyInput? key)
+    {
+        key = null;
+        var read = new List<KeyInput>();
+        var seq = new System.Text.StringBuilder();
+        bool first = true;
+        while (Term.KeyAvailable)
+        {
+            if (KeyNames.FromConsoleKey(Term.ReadKey()) is not { } k) continue;
+            read.Add(k);
+            char c = k.Name == "SP" ? ' ' : k.Char;
+            if (first)
+            {
+                first = false;
+                if (c != '[') break;
+                continue;
+            }
+            if (c is >= '0' and <= '?') { seq.Append(c); if (seq.Length > 32) break; continue; }
+            if (c is >= ' ' and <= '/') { seq.Append(c); continue; }
+            if (c is >= '@' and <= '~')
+            {
+                seq.Append(c);
+                key = KeyNames.CsiKey(seq.ToString());
+                return true;
+            }
+            break;
+        }
+        foreach (var k in read) _keyQueue.Enqueue(k);
+        return false;
     }
 
     // expanded once per line, or on each drawing if it has \q{...} (mode, caps lock)
@@ -318,7 +354,9 @@ public sealed partial class Editor
         if (IsSet("prompt_input_left")) m.InputLeft = Expand("prompt_input_left");
         if (IsSet("prompt_input_after")) m.InputAfter = Expand("prompt_input_after");
         // the list view's hint continues the typed word, nothing goes between them
-        m.InputAfterFirst = Options.Get("prompt_input_after_position") == "before" && ListHint == null;
+        // and neither does a suggestion that stands in for the list in a small window
+        m.InputAfterFirst = Options.Get("prompt_input_after_position") == "before" && ListHint == null
+            && (Options.Get("complete_auto_view") != "list" || ListViewFits);
 
         if (Info != null) m.Panels.Add(PanelLine.Of(Info, InfoFace));
         if (Menu != null || ListViewActive)
@@ -328,7 +366,7 @@ public sealed partial class Editor
             int maxOpt = Options.GetInt("complete_menu_maxlines", 10);
             int max = maxOpt > 0 ? Math.Min(maxOpt, avail) : avail;    // ble.sh: -1 = no limit
             if (Menu != null) m.Panels.AddRange(Menu.Layout(width, Math.Max(1, max)));
-            else AddListViewPanels(m, width, Math.Min(avail - 1, ListMax));
+            else AddListViewPanels(m, width, Math.Min(ListViewTips ? avail - 1 : avail, ListMax));
         }
         return m;
     }

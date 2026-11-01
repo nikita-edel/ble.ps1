@@ -23,6 +23,9 @@ public static class FileSystemPaths
             if (isDir) return PathKind.Directory;
             if (File.Exists(p))
             {
+                if (!OperatingSystem.IsWindows())
+                    return (File.GetUnixFileMode(p) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0
+                        ? PathKind.Executable : PathKind.File;
                 var ext = Path.GetExtension(p);
                 return ExeExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase) ? PathKind.Executable : PathKind.File;
             }

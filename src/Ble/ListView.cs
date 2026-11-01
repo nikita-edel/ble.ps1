@@ -41,7 +41,27 @@ public sealed partial class Editor
         _listDismissed = null; _listCompletionPending = false;
     }
 
-    static bool ListViewEnabled => Options.Get("complete_auto_view") == "list" && Options.GetBool("complete_auto_complete");
+    bool ListViewEnabled => Options.Get("complete_auto_view") == "list" && Options.GetBool("complete_auto_complete") && ListViewFits;
+
+    // complete_auto_view_min_width/height: a window too small for the list gets inline suggestions
+    bool ListViewFits => Term.Width >= Options.GetInt("complete_auto_view_min_width", 0)
+        && Term.Height >= Options.GetInt("complete_auto_view_min_height", 0);
+
+    bool _listFit = true;
+
+    /// <summary>After a resize: switches between the list and inline suggestions if the window crossed the limits.</summary>
+    internal void CheckListViewFit()
+    {
+        bool fit = ListViewFits;
+        if (fit == _listFit) return;
+        _listFit = fit;
+        HideListView();
+        ClearSuggestion();
+        _suggestFor = null;
+        UpdateSuggestion();
+    }
+
+    static bool ListViewTips => Options.GetBool("complete_auto_view_tips");
 
     static bool ListSource(string name) => Options.ListHas("complete_auto_view_source", name);
 
@@ -140,6 +160,7 @@ public sealed partial class Editor
         {
             if (comps.Count >= ListMax) break;
             if (afterSpace && it.Type != CompletionResultType.ParameterValue) continue;
+            if (HideCommandPath(it, word)) continue;
             var c = UserSeparators(word, it.CompletionText);
             var line = head + c + tail;
             if (line == _listQuery || _listHistory.Any(h => h.Line == line)) continue;
@@ -270,7 +291,7 @@ public sealed partial class Editor
             pl.Add(src, sel && wholeRow ? extra : descSgr);
             m.Panels.Add(pl);
         }
-        if (items.Count > rows || _listSel >= 0)
+        if (ListViewTips && (items.Count > rows || _listSel >= 0))
         {
             var pos = _listSel >= 0 ? $"{_listSel + 1}/{items.Count}" : $"{items.Count} items";
             m.Panels.Add(PanelLine.Of($"({pos}, up/down: select, S-RET: take, C-g: cancel)", "menu_info"));

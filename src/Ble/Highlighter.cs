@@ -38,7 +38,7 @@ public sealed class Highlighter
     };
 
     readonly IShell _shell;
-    readonly Dictionary<string, string> _cmdFace = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, string> _cmdFace = new(StringComparer.Ordinal);   // GIT and git can differ
     readonly Dictionary<string, PathKind> _paths = new(StringComparer.Ordinal);
     readonly Dictionary<(string Dir, string Word), bool> _originPaths = new();
     readonly Dictionary<string, VarKind> _vars = new(StringComparer.OrdinalIgnoreCase);

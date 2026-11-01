@@ -81,6 +81,10 @@ public static class Options
         ["complete_auto_view_ambiguous"] = "1",     // list view: still show " [correction] " inline for a wrong word
         ["complete_auto_view_completion"] = "word",   // word: completion entries show only the completed word; line: the whole line
         ["complete_auto_view_inline"] = "1",        // list view: show what S-RET would take after the cursor
+        ["complete_auto_view_tips"] = "1",          // list view: the row with the position and the keys ('' or 0 = off)
+        ["complete_auto_view_min_width"] = "0",     // list view: narrower windows get inline suggestions (0 = always the list)
+        ["complete_auto_view_min_height"] = "0",    // list view: lower windows get inline suggestions (0 = always the list)
+        ["complete_auto_hide_command_paths"] = "",  // suggestions: leave out /usr/bin/ls when typing ls (TAB still lists it)
 
         // ---- ble.sh options (defaults from ble.sh). Those with an effect in ble.ps1: ----
         ["complete_auto_complete_opts"] = "",    // history-disabled

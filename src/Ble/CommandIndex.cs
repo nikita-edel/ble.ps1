@@ -128,12 +128,14 @@ sealed class CommandIndex
     void BuildPath(string pathVar)
     {
         _pathVar = pathVar;
-        var map = new Dictionary<string, CommandKind>(StringComparer.OrdinalIgnoreCase);
         bool windows = OperatingSystem.IsWindows();
+        // program names are case sensitive off Windows: GIT doesn't run git
+        var names = windows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var map = new Dictionary<string, CommandKind>(names);
         var exts = new HashSet<string>((Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
             .Split(';', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
         var dirs = new List<(string, DateTime)>();
-        foreach (var dir in pathVar.Split(System.IO.Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var dir in pathVar.Split(System.IO.Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).Distinct(names))
         {
             dirs.Add((dir, DirTime(dir)));
             IEnumerable<string> files;

@@ -96,11 +96,12 @@ public static class KeyNames
         switch (key)
         {
             case ConsoleKey.Enter:
-                if (code == 10 && !ctrl) return new KeyInput(alt ? "C-M-j" : "C-j", '\0');
+                // on Linux/macOS .NET reports LF as Ctrl+Enter; a terminal sends C-RET differently (see CsiKey)
+                if (code == 10 && (!ctrl || !OperatingSystem.IsWindows())) return new KeyInput(alt ? "C-M-j" : "C-j", '\0');
                 b = "RET"; break;
             case ConsoleKey.Tab: b = "TAB"; break;
             case ConsoleKey.Backspace:
-                if (code == 8 && ctrl && !alt && !shift && OperatingSystem.IsWindows() == false) { b = "h"; }
+                if (code == 8 && ctrl && !shift && OperatingSystem.IsWindows() == false) { b = "h"; }
                 else b = "DEL";
                 break;
             case ConsoleKey.Escape: b = "ESC"; break;
@@ -128,7 +129,15 @@ public static class KeyNames
         {
             if (key >= ConsoleKey.A && key <= ConsoleKey.Z)
                 return new KeyInput(Format(true, alt, shift, ((char)('a' + (key - ConsoleKey.A))).ToString()), '\0');
-            if (key >= ConsoleKey.D0 && key <= ConsoleKey.D9 && (code < 0x20 || char.IsDigit(ch)))
+            // on Linux/macOS .NET reports C-@ C-\ C-] C-^ C-_ as the digits of old terminals (C-2, C-4 ...7)
+            bool digitKey = key >= ConsoleKey.D0 && key <= ConsoleKey.D9;
+            string? oldDigit = !digitKey || code >= 0x20 || OperatingSystem.IsWindows() ? null : key switch
+            {
+                ConsoleKey.D2 => "@", ConsoleKey.D4 => "\\", ConsoleKey.D5 => "]", ConsoleKey.D6 => "^", ConsoleKey.D7 => "_",
+                _ => null,
+            };
+            if (oldDigit != null) return new KeyInput(Format(true, alt, false, oldDigit), '\0');
+            if (digitKey && (code < 0x20 || char.IsDigit(ch)))
                 return new KeyInput(Format(true, alt, false, ((char)('0' + (key - ConsoleKey.D0))).ToString()), '\0');
             string? cb = code switch
             {
@@ -169,6 +178,31 @@ public static class KeyNames
         }
         if (alt) return new KeyInput("M-" + ch, '\0');
         return new KeyInput(ch.ToString(), ch);
+    }
+
+    /// <summary>
+    /// The key of an escape sequence .NET doesn't know, from what follows ESC [. Terminals with extended key
+    /// reporting send them for S-RET and the like: "13;2u" (CSI u) and "27;2;13~" (modifyOtherKeys).
+    /// Null if it is not a key.
+    /// </summary>
+    public static KeyInput? CsiKey(string seq)
+    {
+        var m = Regex.Match(seq, @"^(?:27;(?<mod>\d+);(?<code>\d+)~|(?<code>\d+)(?::\d*)*(?:;(?<mod>\d+)(?::\d*)?)?u)$");
+        if (!m.Success || !int.TryParse(m.Groups["code"].Value, out var code) || code is < 0 or > 0x10FFFF or (>= 0xD800 and <= 0xDFFF)) return null;
+        int mod = m.Groups["mod"].Success && int.TryParse(m.Groups["mod"].Value, out var v) ? v - 1 : 0;
+        bool shift = (mod & 1) != 0, alt = (mod & 2) != 0, ctrl = (mod & 4) != 0;
+        string? b = code switch
+        {
+            13 => "RET", 9 => "TAB", 27 => "ESC", 127 => "DEL", 8 => "DEL", 32 => "SP",
+            < 32 => null,
+            _ => char.ConvertFromUtf32(code),
+        };
+        if (b == null) return null;
+        var name = Format(ctrl, alt, shift, b);
+        // a plain character, only with shift or nothing: it is typed
+        if (name.Length <= 2 && !ctrl && !alt && b.Length <= 2 && name != "SP" && b is not ("RET" or "TAB" or "ESC" or "DEL"))
+            return new KeyInput(name, name[0]);
+        return new KeyInput(name, name == "SP" ? ' ' : '\0');
     }
 
     /// <summary>Parses one key token, e.g. 'C-x', 'M-DEL', 'S-TAB', 'Ctrl+a', 'up', 'a'.</summary>

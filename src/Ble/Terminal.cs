@@ -58,8 +58,8 @@ public sealed class ConsoleTerminal : ITerminal
 
     public long Now => Environment.TickCount64;
 
-    // Thread.Sleep(10) sleeps a whole timer tick (~15 ms) on Windows, so a key pressed while idle waited
-    // that long. Waiting on the console input handle returns as soon as input arrives.
+    // Thread.Sleep(10) sleeps a whole timer tick (~15 ms) on Windows and the full 10 ms elsewhere, so a
+    // key pressed while idle waited that long. Waiting on the console input returns as soon as input arrives.
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
     static extern IntPtr GetStdHandle(int nStdHandle);
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]
@@ -81,6 +81,30 @@ public sealed class ConsoleTerminal : ITerminal
             }
             _signaled = 0;
         }
+        else if (!OperatingSystem.IsWindows() && _poll && !Console.IsInputRedirected)
+        {
+            try
+            {
+                var fd = new PollFd { Fd = 0, Events = PollIn };
+                // on an error or a closed terminal poll returns at once, so sleep to not spin
+                if (poll(ref fd, 1, ms) >= 0 && (fd.Revents & (PollErr | PollHup | PollNval)) == 0) return;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { _poll = false; }
+        }
         Thread.Sleep(ms);
     }
+
+    const short PollIn = 1, PollErr = 8, PollHup = 16, PollNval = 32;
+    bool _poll = true;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct PollFd { public int Fd; public short Events; public short Revents; }
+
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    static extern int poll(ref PollFd fds, ulong count, int timeoutMs);
+
+    // "libc" alone finds libc.so, which only exists with the C headers installed (and is a text file then)
+    static ConsoleTerminal() => System.Runtime.InteropServices.NativeLibrary.SetDllImportResolver(typeof(ConsoleTerminal).Assembly,
+        (name, _, _) => name == "libc" && OperatingSystem.IsLinux()
+            && System.Runtime.InteropServices.NativeLibrary.TryLoad("libc.so.6", out var libc) ? libc : IntPtr.Zero);
 }

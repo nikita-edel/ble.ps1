@@ -1,3 +1,10 @@
+0.3.6
+- complete_auto_view_tips: turn off the row with the keys under the list view
+- complete_auto_view_min_width/height: inline suggestions in small windows
+- understand S-RET and other keys sent as CSI u, dont run them as vi commands
+- bug fixes/optimizations on linux
+- dont show same binaries on linux (based on path) and dont ignore case
+
 0.3.5
 - dont suggest comments
 - dont suggest commands with white space

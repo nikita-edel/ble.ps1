@@ -1,13 +1,18 @@
-"""End-to-end harness: runs pwsh with ble.ps1 inside a ConPTY and renders its output with pyte."""
+"""End-to-end harness: runs pwsh with ble.ps1 in a terminal (ConPTY or a pty) and renders its output with pyte."""
 import os
 import re
+import sys
 import tempfile
 import threading
 import time
 
 import pyte
 import pytest
-from winpty import PtyProcess
+
+if sys.platform == "win32":
+    from winpty import PtyProcess
+else:
+    from unixpty import PtyProcess
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 MODULE = os.path.join(ROOT, "out", "ble", "ble.psd1")
@@ -34,10 +39,19 @@ def key(name):
     raise ValueError(name)
 
 
+class Screen(pyte.Screen):
+    term = None
+
+    # a real terminal answers ESC[6n, and .NET asks it on Linux for Console.CursorLeft (ConPTY answers itself)
+    def write_process_input(self, data):
+        self.term.proc.write(data)
+
+
 class Term:
     def __init__(self, cols=100, rows=30, setup=""):
         self.cols, self.rows = cols, rows
-        self.screen = pyte.Screen(cols, rows)
+        self.screen = Screen(cols, rows)
+        self.screen.term = self
         self.stream = pyte.Stream(self.screen)
         self.lock = threading.Lock()
         self.tmp = tempfile.mkdtemp(prefix="ble-e2e-")

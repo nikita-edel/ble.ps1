@@ -45,6 +45,9 @@ Set options with `bleopt name=value`. An empty value (`bleopt name=`) turns a sw
 | `complete_auto_view_multiline` | `1` | In multi-line input, list entries for the current line |
 | `complete_auto_view_ambiguous` | `1` | With the list, still show ` [correction] ` for a wrong word |
 | `complete_auto_view_inline` | `1` | With the list, also show the entry `S-RET` would take after the cursor |
+| `complete_auto_view_tips` | `1` | With the list, show the row with the position and the keys |
+| `complete_auto_view_min_width` / `complete_auto_view_min_height` | `0` / `0` | Windows smaller than this get inline suggestions instead of the list (`0` = always the list) |
+| `complete_auto_hide_command_paths` | | Leave `/usr/bin/ls` out of the suggestions when you type `ls` |
 
 ## Completion menu
 

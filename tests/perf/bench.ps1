@@ -1,8 +1,12 @@
-param([string]$Module = (Join-Path $PSScriptRoot '../../out/ble/ble.psd1'), [switch]$Profile)
+param([string]$Module = (Join-Path $PSScriptRoot '../../out/ble/ble.psd1'), [Alias('Profile')][switch]$LoadProfile)
 # Times the work ble.ps1 does per keystroke, with the real PowerShell engine.
 #   pwsh -NoProfile -File tests/perf/bench.ps1            (after ./build.ps1)
 #   pwsh -NoProfile -File tests/perf/bench.ps1 -Profile   (with your profile's modules loaded)
-if ($Profile) { . $PROFILE }
+# not named $Profile: that would hide $PROFILE. The profile's Import-Module must find this build, a second Ble.dll can't load
+if ($LoadProfile) {
+    $env:PSModulePath = (Split-Path (Split-Path (Resolve-Path $Module))) + [IO.Path]::PathSeparator + $env:PSModulePath
+    . $PROFILE
+}
 Import-Module $Module -ArgumentList noattach -Force
 
 Invoke-Expression @'
@@ -35,7 +39,7 @@ $shell = [Ble.PsShell]::new($ExecutionContext)
 '--- TabExpansion2 (CommandCompletion.CompleteInput, CurrentRunspace) ---'
 $cold = [Diagnostics.Stopwatch]::StartNew(); $null = $shell.Complete('Get-Ch', 6); $cold.Stop()
 '{0,-55} {1,9:N2} ms' -f 'first call (cold)', $cold.Elapsed.TotalMilliseconds
-foreach ($t in 'Get-Ch', 'Get-ChildItem -Erro', 'Get-ChildItem -ErrorAction ', 'ls ./', 'git ', 'xyz', '$Hom', 'Get-ChildItem C:\Windows\System32\dr') {
+foreach ($t in 'Get-Ch', 'Get-ChildItem -Erro', 'Get-ChildItem -ErrorAction ', 'ls ./', 'git ', 'xyz', '$Hom', "Get-ChildItem $(Join-Path $PSHOME 'p')") {
     T "complete '$t'" { $shell.Complete($t, $t.Length) } 10
 }
 

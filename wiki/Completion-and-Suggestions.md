@@ -126,6 +126,14 @@ PS> git s
   `bleopt complete_auto_view_inline=0` turns this off.
 - `C-g` goes back to what you typed.
 - In multi-line input, the list is for the line you are on.
+- The row under the list with the position and the keys goes away with
+  `bleopt complete_auto_view_tips=0`, and the list gets that row.
+- In a small window the list doesn't help much. With `bleopt complete_auto_view_min_width=50` and
+  `bleopt complete_auto_view_min_height=10`, smaller windows get inline suggestions instead, and the
+  list comes back when the window is big enough again. By default the list is always used.
+- When a function or alias has the same name as a program, PowerShell also offers the program's full
+  path: `/usr/bin/ls` when you type `ls`. `bleopt complete_auto_hide_command_paths=1` leaves those out
+  of the suggestions. `TAB` still lists them, and so does typing a path yourself.
 
 Related options: `complete_auto_view_maxlines`, `complete_auto_view_source`,
 `complete_auto_view_completion`, `complete_auto_view_selected` and the faces `list_view_selected`

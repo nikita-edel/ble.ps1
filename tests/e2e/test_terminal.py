@@ -1,4 +1,5 @@
 """Real-terminal tests: pwsh + ble.ps1 in a ConPTY, screen reconstructed with pyte."""
+import sys
 import time
 
 
@@ -102,7 +103,7 @@ def test_multiline_input(term):
 
 
 def test_exit_status_mark(term):
-    term.type("cmd /c exit 3")
+    term.type("cmd /c exit 3" if sys.platform == "win32" else "sh -c 'exit 3'")
     term.keys("RET")
     term.wait_text("[ble: exit 3]")
     term.wait_prompt()
