@@ -1,3 +1,9 @@
+0.3.5
+- dont suggest comments
+- dont suggest commands with white space
+- dont stop suggesting when having white space
+- refactor
+
 0.3.4
 - allow to suggest each line for multiline, or suggest or dont
 

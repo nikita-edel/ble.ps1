@@ -47,6 +47,16 @@ because a command that worked in one folder often makes no sense in another:
 
 Both work in the list view too.
 
+**Spaces between words don't count.** `git  st` finds `git status`, and `git st` finds
+`git   status`, as PowerShell runs them the same. Spaces in front are ignored too. Inside quotes
+the text has to match, because there the space is part of the string. What you typed stays as
+you typed it, and suggestions come with one space between words, even if the entry in your
+history has more.
+
+**Comments are not suggested.** An entry that is only a comment (`# todo`, `<# ... #>`) stays in
+your history but never shows up as a suggestion. A comment behind a command doesn't count:
+`git status # todo` is suggested like any other command.
+
 **Multi-line entries** are not suggested or listed by default. They stay in your history either
 way, and `bleopt complete_auto_history_multiline` changes what suggestions do with them:
 

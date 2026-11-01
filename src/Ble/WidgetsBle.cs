@@ -12,7 +12,7 @@ public sealed partial class Editor
         // ---- shell words (ble.sh "sword": a word of the command line, quotes included) ----
         W("forward-sword", (e, k) =>
         {
-            if (e.Point == e.Text.Length && e.AcceptSuggestion(true, unixWord: true)) return;
+            if (e.AcceptSuggestion(true, unixWord: true)) return;
             e.Point = e.ShellWordForward(e.Point);
         });
         W("backward-sword", (e, k) => e.Point = e.ShellWordBackward(e.Point));
@@ -46,7 +46,7 @@ public sealed partial class Editor
         });
         W("zap-to-char", (e, k) =>
         {
-            int count = Math.Max(1, e.CountArg());
+            int count = e.Repeat;
             e.Info = "(zap-to-char)";
             e.Modal = key =>
             {
@@ -118,7 +118,7 @@ public sealed partial class Editor
                 e.Info = "(arg: " + e.Arg + ")";
                 return;
             }
-            if (k.Char != '\0') e.Insert(new string(k.Char, Math.Max(1, e.CountArg())));
+            if (k.Char != '\0') e.Insert(new string(k.Char, e.Repeat));
         });
 
         // ---- keyboard macros (emacs C-x ( C-x ) C-x e) ----
@@ -142,7 +142,7 @@ public sealed partial class Editor
         W("call-keyboard-macro", (e, k) =>
         {
             if (!Macros.TryGetValue('\x01', out var keys) || e._macroPlayDepth >= 10) { e.Bell(); return; }
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             e._macroPlayDepth++;
             try { for (int i = 0; i < n && !e.Done; i++) foreach (var key in keys) e.Dispatch(key); }
             finally { e._macroPlayDepth--; }
@@ -158,7 +158,7 @@ public sealed partial class Editor
             name = name.Trim();
             if (name.Length == 0) return;
             if (Widgets.ContainsKey(name) || UserWidgets.ContainsKey(name)) e.InvokeWidget(name, default);
-            else { e.Info = $"ble: unknown widget '{name}'"; e.InfoFace = "status_error"; }
+            else e.ShowError($"ble: unknown widget '{name}'");
         }, WidgetNames));
 
         // ---- expansions ----
@@ -323,7 +323,7 @@ public sealed partial class Editor
     void CompleteContext(string context, bool menuOnly = false, bool insertAll = false)
     {
         int ws = Point;
-        while (ws > 0 && !char.IsWhiteSpace(Text[ws - 1]) && "|;(){}".IndexOf(Text[ws - 1]) < 0) ws--;
+        while (ws > 0 && !char.IsWhiteSpace(Text[ws - 1]) && !"|;(){}".Contains(Text[ws - 1])) ws--;
         var word = Text.Substring(ws, Point - ws);
         List<CompletionItem>? items = null;
         int ri = ws, rl = word.Length;
@@ -395,7 +395,7 @@ public sealed partial class Editor
         if (!again)
         {
             int ws = Point;
-            while (ws > 0 && (char.IsLetterOrDigit(Text[ws - 1]) || "_-.".IndexOf(Text[ws - 1]) >= 0)) ws--;
+            while (ws > 0 && (char.IsLetterOrDigit(Text[ws - 1]) || "_-.".Contains(Text[ws - 1]))) ws--;
             _dabbrevPrefix = Text.Substring(ws, Point - ws);
             _dabbrevRange = (ws, Point);
             _dabbrevIndex = 0;
@@ -434,7 +434,7 @@ public sealed partial class Editor
         }
         foreach (var (s, e, w) in edits.OrderByDescending(x => x.Start))
         {
-            Text = Text.Substring(0, s) + w + Text.Substring(e);
+            Splice(s, e, w);
             if (Point > s) Point = Math.Max(s, Point + w.Length - (e - s));
         }
         Point = Math.Clamp(Point, 0, Text.Length);

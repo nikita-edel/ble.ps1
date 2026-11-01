@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Ble;
 
@@ -34,6 +35,8 @@ public sealed class RenderModel
 /// Draws the editing area relative to the position where the prompt ended.
 /// The cursor is always moved relatively (CUU/CR/CUF) so the drawing survives scrolling.
 /// Rows are broken explicitly (CR LF) instead of relying on terminal auto-wrap.
+/// A redraw writes over the last drawing and clears behind each row, so a row that stays the same
+/// (the list view, the rows at the bottom) never goes blank on the screen.
 /// </summary>
 public sealed class Renderer
 {
@@ -47,6 +50,8 @@ public sealed class Renderer
     List<int> _rowWidths = new();   // used columns per row in the last drawing (row 0 includes StartCol)
     int _cursorCol;
     int _topDrawn;                  // rows drawn at the top of the window
+    int _bottomDrawn;               // rows drawn at the bottom of the window ...
+    (int W, int H) _bottomSize;     // ... and the window size they were drawn for
 
     public Renderer(ITerminal term) { _term = term; }
 
@@ -91,16 +96,25 @@ public sealed class Renderer
         public readonly List<int> RowWidths = new();
         public string Ps2 = "";
         public string Ps2Sgr = "";
+        public string? Rps1;        // the right prompt, drawn when row 0 is done (clearing the row would erase it)
     }
 
     static void NewRow(Ctx c)
     {
         if (c.CurSgr.Length > 0) c.Sb.Append("\x1b[0m");
         c.RowWidths.Add(c.Col);
+        if (c.Col < c.W) c.Sb.Append("\x1b[K");   // on a full row the cursor is still on the last cell
+        DrawRps1(c);
         c.Sb.Append("\r\n");
         c.Row++;
         c.Col = 0;
         if (c.CurSgr.Length > 0) c.Sb.Append(c.CurSgr);
+    }
+
+    static void DrawRps1(Ctx c)
+    {
+        c.Sb.Append(c.Rps1);
+        c.Rps1 = null;
     }
 
     static void SetSgr(Ctx c, string sgr)
@@ -179,7 +193,7 @@ public sealed class Renderer
         Emit(c, text, _ => sgr, -1);
     }
 
-    static readonly System.Text.RegularExpressions.Regex SgrReset = new(@"\x1b\[0*m");
+    static readonly Regex SgrReset = new(@"\x1b\[0*m");
 
     // Draws one panel row from the cursor, cut to the width. Returns the columns used.
     internal static int AppendPanel(StringBuilder sb, PanelLine p, int w)
@@ -207,7 +221,7 @@ public sealed class Renderer
     static readonly List<PanelLine> NoRows = new();
 
     // Draws the rows docked to the top of the window and clears the rows left from the last drawing
-    // (no rows: clears them). The bottom ones go with the \e[J of the drawing.
+    // (no rows: clears them).
     void DrawTop(StringBuilder sb, List<PanelLine> rows, int w)
     {
         int n = Math.Max(rows.Count, _topDrawn);
@@ -215,8 +229,9 @@ public sealed class Renderer
         sb.Append("\u001b7");
         for (int i = 0; i < n; i++)
         {
-            sb.Append("\x1b[").Append(i + 1).Append(";1H\x1b[2K");
+            sb.Append("\x1b[").Append(i + 1).Append(";1H");
             if (i < rows.Count) AppendPanel(sb, rows[i], w);
+            sb.Append(i < rows.Count ? "\x1b[K" : "\x1b[2K");
         }
         sb.Append("\u001b8");
         _topDrawn = rows.Count;
@@ -243,13 +258,12 @@ public sealed class Renderer
             for (int i = 0; i < above.Count; i++)
             {
                 if (i > 0) sb.Append("\x1b[B\r");
-                sb.Append("\x1b[2K");
                 if (!m.Final) AppendPanel(sb, above[i], w);
+                sb.Append(m.Final ? "\x1b[2K" : "\x1b[K");
             }
             sb.Append("\x1b[").Append(m.AboveGap + 1).Append("B\r");
             if (StartCol > 0) sb.Append("\x1b[").Append(StartCol).Append('C');
         }
-        sb.Append("\x1b[J");
 
         DrawTop(sb, m.Final ? NoRows : m.Top, w);
 
@@ -267,11 +281,7 @@ public sealed class Renderer
             int used = StartCol + TextWidth.StringWidth(m.InputLeft) + TextWidth.StringWidth(first);
             if (nl < 0 && m.Suggestion?.IndexOf('\n') is null or < 0) used += TextWidth.StringWidth(m.InputAfter);
             if (rw > 0 && used + 1 + rw <= w - 1 && w - rw - StartCol > 0)
-            {
-                sb.Append("\x1b[").Append(w - 1 - rw - StartCol).Append('C');
-                sb.Append(m.Rps1).Append("\x1b[0m\r");
-                if (StartCol > 0) sb.Append("\x1b[").Append(StartCol).Append('C');
-            }
+                c.Rps1 = "\r\x1b[" + (w - 1 - rw) + "C" + m.Rps1 + "\x1b[0m";
         }
 
         if (!m.Final && !string.IsNullOrEmpty(m.InputLeft))
@@ -328,8 +338,24 @@ public sealed class Renderer
         }
         c.RowWidths.Add(c.Col);
 
+        // what is left of the last drawing. The rows at the bottom of the window are drawn over as well, if
+        // they are the same rows; otherwise everything below goes.
+        if (Active && !m.Final && m.Bottom.Count > 0 && m.Bottom.Count == _bottomDrawn && (w, Height) == _bottomSize)
+        {
+            sb.Append("\x1b[K");
+            DrawRps1(c);
+            int left = _rowWidths.Count - c.RowWidths.Count;
+            for (int i = 0; i < left; i++) sb.Append("\x1b[B\x1b[2K");
+            if (left > 0) sb.Append("\x1b[").Append(left).Append('A');
+        }
+        else
+        {
+            sb.Append("\x1b[J");
+            DrawRps1(c);
+        }
+
         // rows docked to the bottom of the window: make room under the drawing (the terminal scrolls if it has
-        // to), then draw them at absolute rows. The \e[J of the next drawing erases them.
+        // to), then draw them at absolute rows
         if (!m.Final && m.Bottom.Count > 0)
         {
             int n = m.Bottom.Count, h = Math.Max(n + 1, Height);
@@ -339,6 +365,7 @@ public sealed class Renderer
             {
                 sb.Append("\x1b[").Append(h - n + 1 + i).Append(";1H");
                 AppendPanel(sb, m.Bottom[i], w);
+                sb.Append("\x1b[K");
             }
             sb.Append("\u001b8");
         }
@@ -366,6 +393,8 @@ public sealed class Renderer
         Height = _term.Height;
         var s = Build(m, out var row, out var col, out var widths);
         _term.Write(s);
+        _bottomDrawn = m.Final ? 0 : m.Bottom.Count;
+        _bottomSize = (Width > 0 ? Width : 80, Height);
         if (m.Final)
         {
             Active = false;

@@ -10,6 +10,203 @@ public class HistoryMatchTests
 
     static string Key(string s, bool paths = true, bool ignoreCase = true) => HistoryRanking.Key(s, paths, ignoreCase);
 
+    [Theory]
+    [InlineData("git  st", "git status", 6)]        // more space typed than in the entry
+    [InlineData("git st", "git   status", 8)]       // less
+    [InlineData("git\tst", "git status", 6)]
+    [InlineData("git ", "git   status", 6)]         // up to where the next word starts
+    [InlineData("git", "git   status", 3)]
+    [InlineData("   git st", "git status", 6)]      // in front
+    [InlineData("git st", "gitst", -1)]             // a space can't appear from nothing
+    [InlineData("gitst", "git st", -1)]
+    [InlineData("git  x", "git status", -1)]
+    [InlineData("echo 'a b", "echo 'a  b'", -1)]    // in a string the space counts
+    [InlineData("echo \"a  b", "echo \"a b\"", -1)]
+    [InlineData("echo   'a b", "echo 'a b c'", 9)]
+    [InlineData("echo 'it' x", "echo 'it'   x y", 13)]   // after the string it doesn't
+    [InlineData("a.b  (c", "a.b (c)", 6)]           // the rest of the text is taken literally
+    [InlineData("a.b  c", "axb c", -1)]
+    public void SpaceBetweenWordsDoesNotCount(string query, string entry, int length) =>
+        Assert.Equal(length, new HistoryQuery(query).PrefixLength(entry));
+
+    [Theory]
+    [InlineData("# todo", true)]
+    [InlineData("   # todo", true)]
+    [InlineData("#", true)]
+    [InlineData("# a\n\n  # b", true)]
+    [InlineData("<# a #>", true)]
+    [InlineData("<# a\nb\n#>", true)]
+    [InlineData("git status # todo", false)]
+    [InlineData("# a\ngit status", false)]
+    [InlineData("<# a #> git status", false)]
+    [InlineData("<# a #> git # b #>", false)]
+    [InlineData("Write-Output '#'", false)]
+    [InlineData("<", false)]
+    public void CommentEntries(string entry, bool comment) =>
+        Assert.Equal(comment, HistoryRanking.IsComment(entry));
+
+    [Fact]
+    public void CommentsAreNotSuggested()
+    {
+        var h = new Harness("git status", "# git todo", "git old # keep");
+        h.Type("# g");
+        Assert.Null(h.E.Suggestion);
+        h.Keys("C-u");
+        h.Type("git o");
+        Assert.Equal("ld # keep", h.E.Suggestion);  // a comment behind a command stays
+
+        h = new Harness("# git todo", "<# git block #>", "git status");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git");
+        Assert.Equal(new[] { "git status" }, h.E.ListViewItems);
+
+        h = new Harness("# git statux");            // similar entries too
+        Options.Set("complete_auto_history_fuzzy", "1");
+        h.Type("# git status");
+        h.Idle();
+        Assert.Null(h.E.Suggestion);
+
+        h = new Harness("# todo", "git status");    // still history
+        h.Keys("C-up", "C-up");
+        Assert.Equal("# todo", h.Text);
+    }
+
+    [Theory]
+    [InlineData("line")]
+    [InlineData("whole")]
+    public void CommentsInsideMultiLineEntries(string mode)
+    {
+        const string entry = "# git first\n<#\n  git block\n#>\n{\n  # git inner\n  git real\n}";
+        var h = new Harness(entry);
+        Options.Set("complete_auto_history_multiline", mode);
+        h.Type("# g");
+        if (mode == "line") Assert.Null(h.E.Suggestion);
+        else Assert.Equal("it first" + entry.Substring("# git first".Length), h.E.Suggestion);   // code after them: not only comments
+        h.Keys("C-u");
+        h.Type("git");
+        Assert.Equal(mode == "line" ? " real" : null, h.E.Suggestion);
+    }
+
+    [Theory]
+    [InlineData("ls                -l", "ls -l")]
+    [InlineData("  ls\t\t-l  ", "ls -l")]
+    [InlineData("ls -l", "ls -l")]
+    [InlineData("echo 'a   b'    c", "echo 'a   b' c")]
+    [InlineData("echo \"a   b\"    c", "echo \"a   b\" c")]
+    [InlineData("echo \"it's   x\"   y", "echo \"it's   x\" y")]
+    [InlineData("echo a`   b   c", "echo a`  b c")]          // an escaped space is part of the word
+    [InlineData("echo 'a   b", "echo 'a   b")]               // never closed
+    [InlineData("if (1) {\n    a   b\n}", "if (1) {\n    a   b\n}")]
+    public void EntriesAreSuggestedWithOneSpaceBetweenWords(string entry, string shown) =>
+        Assert.Equal(shown, HistoryQuery.Tidy(entry));
+
+    [Fact]
+    public void SuggestionsDoNotCopyExtraSpaces()
+    {
+        const string spaced = "ls                -l";
+        var h = new Harness(spaced);
+        h.Type("ls");
+        Assert.Equal(" -l", h.E.Suggestion);
+        h.E.AcceptSuggestion(wordOnly: false);
+        Assert.Equal("ls -l", h.Text);
+
+        h = new Harness(spaced);                    // the entry itself stays as it is
+        h.Keys("C-up");
+        Assert.Equal(spaced, h.Text);
+
+        h = new Harness(spaced, "ls -a");
+        Options.Set("complete_auto_view", "list");
+        h.Type("ls");
+        Assert.Equal(new[] { "ls -a", "ls -l" }, h.E.ListViewItems);
+        Assert.Equal(" -a", h.E.Suggestion);
+
+        h = new Harness("ls -l", spaced);           // the same once, also without merging
+        Options.Set("complete_auto_view", "list");
+        Options.Set("complete_auto_history_merge", "");
+        h.Type("ls");
+        Assert.Equal(new[] { "ls -l" }, h.E.ListViewItems);
+        h.Type(" -l");
+        Assert.Null(h.E.ListViewItems);             // nothing to add to what is typed
+
+        h = new Harness("git   status");            // similar entries too
+        Options.Set("complete_auto_history_fuzzy", "1");
+        h.Type("gti status");
+        h.Idle();
+        Assert.Equal(" [git status] ", h.E.Suggestion);
+    }
+
+    [Theory]
+    [InlineData("git  st", "git status")]
+    [InlineData("ls       -", "ls -l")]             // the typed text is longer than the entry
+    public void AcceptingAWordOfTheListHintWithOtherSpacing(string typed, string entry)
+    {
+        var h = new Harness(entry);
+        Options.Set("complete_auto_view", "list");
+        h.Type(typed);
+        Assert.True(h.E.AcceptSuggestion(wordOnly: true));
+        Assert.Equal(entry, h.Text);
+        Assert.Null(h.E.Info);
+    }
+
+    [Fact]
+    public void AcceptingWordsOfTheListHintKeepsTheRest()
+    {
+        var h = new Harness("git status --short");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git  st");
+        h.E.AcceptSuggestion(wordOnly: true);
+        Assert.Equal("git status", h.Text);
+        Assert.Equal(" --short", h.E.Suggestion);
+    }
+
+    [Fact]
+    public void QueryIsFoundInsideAnEntryWithOtherSpacing()
+    {
+        Assert.Equal((5, 7), new HistoryQuery("add   -p").Find("git  add  -p x") is { } m ? (m.Index, m.Length) : default);
+        Assert.Null(new HistoryQuery("add   -p").Find("git add-p"));
+        Assert.Equal((4, 3), new HistoryQuery("ADD", StringComparison.OrdinalIgnoreCase).Find("git add") is { } c ? (c.Index, c.Length) : default);
+    }
+
+    [Fact]
+    public void SuggestionKeepsGoingWithOtherSpacing()
+    {
+        var h = new Harness("git status");
+        h.Type("git  st");
+        Assert.Equal("atus", h.E.Suggestion);
+        h.Type("a");
+        Assert.Equal("tus", h.E.Suggestion);
+        h.E.AcceptSuggestion(wordOnly: false);
+        Assert.Equal("git  status", h.Text);       // what you typed stays
+
+        h = new Harness("git   status");
+        h.Type("git ");
+        Assert.Equal("status", h.E.Suggestion);
+
+        h = new Harness("git status");
+        h.Type("  git");
+        Assert.Equal(" status", h.E.Suggestion);
+
+        h = new Harness("git status");             // the same command: nothing to add
+        h.Type("git  status");
+        Assert.Null(h.E.Suggestion);
+    }
+
+    [Fact]
+    public void ListViewKeepsGoingWithOtherSpacing()
+    {
+        var h = new Harness("git add -p", "git status");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git  st");
+        Assert.Equal(new[] { "git status" }, h.E.ListViewItems);
+        Assert.Equal("atus", h.E.Suggestion);       // shown after the cursor
+        Assert.Contains(h.E.BuildModel().Panels, p => p.Segments.Any(s => s.Text == "git st"));   // the match
+
+        h = new Harness("git add  -p");            // inside an entry
+        Options.Set("complete_auto_view", "list");
+        h.Type("add   -");
+        Assert.Equal(new[] { "git add -p" }, h.E.ListViewItems);
+    }
+
     [Fact]
     public void KeyTreatsPathSpellingsAsTheSame()
     {

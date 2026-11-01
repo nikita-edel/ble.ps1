@@ -43,7 +43,7 @@ public sealed partial class Editor
 
     static bool ListViewEnabled => Options.Get("complete_auto_view") == "list" && Options.GetBool("complete_auto_complete");
 
-    static bool ListSource(string name) => (":" + Options.Get("complete_auto_view_source") + ":").Contains(":" + name + ":", StringComparison.Ordinal);
+    static bool ListSource(string name) => Options.ListHas("complete_auto_view_source", name);
 
     static int ListMax => Math.Max(1, Options.GetInt("complete_auto_view_maxlines", 10));
 
@@ -90,17 +90,17 @@ public sealed partial class Editor
     /// each group ordered by HistoryRanking.</summary>
     List<ListEntry> SearchListView(string query, int max)
     {
-        var cmp = History.SmartCase(query);
+        var q = new HistoryQuery(query, History.SmartCase(query));
         var rank = NewHistoryRanking(HistoryRanking.ListChecks);
         // entries that mean the same command are listed once (complete_auto_history_merge), and not at all
         // when they mean what is typed
         var seen = new HashSet<string>();
         if (rank.KeyOf(query) is { } qk) seen.Add(qk);
-        IEnumerable<string> Newest() =>
-            (EachHistoryLine ? History.Lines : History.Items.Reverse()).Where(h => h != query);
-        var prefix = rank.Top(Newest().Where(h => h.StartsWith(query, cmp)), max, seen);
-        var sub = rank.Top(Newest().Where(h => !h.StartsWith(query, cmp) && h.Contains(query, cmp)), max - prefix.Count, seen);
-        return prefix.Concat(sub).Select(h => new ListEntry(h, "History")).ToList();
+        var newest = History.Newest(EachHistoryLine).Where(h => h != query);
+        var prefix = rank.Top(newest.Where(h => q.PrefixLength(h) >= 0), max, seen);
+        var sub = rank.Top(newest.Where(h => q.Find(h)?.Index > 0), max - prefix.Count, seen);
+        return prefix.Concat(sub).Select(HistoryQuery.Tidy).Distinct().Where(h => h != query)
+            .Select(h => new ListEntry(h, "History")).ToList();
     }
 
     // complete_auto_history_fuzzy: similar entries when neither history nor completion listed anything
@@ -129,8 +129,7 @@ public sealed partial class Editor
         bool afterSpace = char.IsWhiteSpace(Text[^1]);
         if ((cs == null || cs.Items.Count == 0) && Options.GetBool("complete_ambiguous") && _listHistory.Count == 0 && !afterSpace) cs = CompleteAmbiguous(subsequence: false);
         if (cs == null || cs.Items.Count == 0) return false;
-        int ri = Math.Clamp(cs.ReplacementIndex, _listBase, Text.Length);
-        int rl = Math.Clamp(cs.ReplacementLength, 0, Text.Length - ri);
+        var (ri, rl) = ReplacementIn(cs, _listBase);
         var word = Text.Substring(ri, rl);
         var head = Text.Substring(_listBase, ri - _listBase);
         var tail = Text.Substring(ri + rl);
@@ -184,8 +183,7 @@ public sealed partial class Editor
         int n = _listItems!.Count;
         if (dir > 0) _listSel = _listSel + 1 >= n ? -1 : _listSel + 1;
         else _listSel = _listSel < 0 ? n - 1 : _listSel - 1;
-        Text = Text.Substring(0, _listBase) + (_listSel >= 0 ? _listItems[_listSel].Line : _listQuery);
-        Point = Text.Length;
+        ReplaceEnd(_listBase, _listSel >= 0 ? _listItems[_listSel].Line : _listQuery);
         return true;
     }
 
@@ -199,7 +197,8 @@ public sealed partial class Editor
             if (!ListViewActive || _listSel >= 0 || _listFor != Text || _listQuery == null || Point != Text.Length || MarkActive
                 || !Options.GetBool("complete_auto_view_inline")) return null;
             var line = _listItems![0].Line;
-            return line.Length > _listQuery.Length && PathPrefix(line, _listQuery, ignoreCase: true) ? line.Substring(_listQuery.Length) : null;
+            if (line.Length > _listQuery.Length && PathPrefix(line, _listQuery, ignoreCase: true)) return line.Substring(_listQuery.Length);
+            return new HistoryQuery(_listQuery, StringComparison.OrdinalIgnoreCase).Rest(line);
         }
     }
 
@@ -208,8 +207,7 @@ public sealed partial class Editor
     {
         if (!ListViewActive || Point != Text.Length) return false;
         var e = _listItems![Math.Max(0, _listSel)];
-        Text = Text.Substring(0, _listBase) + e.Line;
-        Point = Text.Length;
+        ReplaceEnd(_listBase, e.Line);
         HideListView();
         return true;
     }
@@ -218,8 +216,7 @@ public sealed partial class Editor
     bool DismissListView()
     {
         if (!ListViewActive || _listQuery == null) return false;
-        Text = Text.Substring(0, _listBase) + _listQuery;
-        Point = Text.Length;
+        ReplaceEnd(_listBase, _listQuery);
         _listDismissed = Text;
         HideListView();
         return true;
@@ -261,12 +258,11 @@ public sealed partial class Editor
             string extra = sel ? selSgr : "";
             string rowExtra = wholeRow ? extra : "";
             pl.Add(sel ? "> " : "  ", rowExtra);
-            int mi = query.Length > 0 ? text.IndexOf(query, cmp) : -1;
-            if (mi >= 0)
+            if (new HistoryQuery(query, cmp).Find(text) is var (mi, ml))
             {
                 pl.Add(text.Substring(0, mi), extra);
-                pl.Add(text.Substring(mi, query.Length), matchSgr + extra);
-                pl.Add(text.Substring(mi + query.Length), extra);
+                pl.Add(text.Substring(mi, ml), matchSgr + extra);
+                pl.Add(text.Substring(mi + ml), extra);
             }
             else pl.Add(text, extra);
             var src = "[" + items[r].Source + "]";

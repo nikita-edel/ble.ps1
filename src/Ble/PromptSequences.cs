@@ -36,7 +36,7 @@ public sealed partial class Editor
         if (raw is PSObject pso) raw = pso.BaseObject;
         if (raw is ScriptBlock sb) return Shell.Evaluate(sb);
         var s = raw as string ?? raw?.ToString() ?? "";
-        if (s.IndexOf('\\') < 0) return s;
+        if (!s.Contains('\\')) return s;
         var o = new StringBuilder();
         var now = DateTime.Now;
         for (int i = 0; i < s.Length; i++)
@@ -161,7 +161,7 @@ public sealed partial class Editor
 
     static string FormatStrftime(DateTime t, string fmt)
     {
-        if (fmt.IndexOf('%') < 0) return t.ToString(fmt);
+        if (!fmt.Contains('%')) return t.ToString(fmt);
         var o = new StringBuilder();
         for (int i = 0; i < fmt.Length; i++)
         {

@@ -188,6 +188,126 @@ public class LayoutTests
         Assert.Contains("A\x1b[0m" + sgr + " B", sb.ToString());
     }
 
+    static bool Shows(Screen s, string text) => s.S.Lines(0, 10).Any(l => l.Contains(text));
+
+    [Fact]
+    public void ACapsChangeWritesOverTheListWithoutErasingIt()
+    {
+        var h = new Harness("git status", "git stash");
+        bool caps = false;
+        h.E.CapsLockProbe = () => caps;
+        Options.Set("complete_auto_view", "list");
+        Options.Set("prompt_input_after", @"\q{capslock}");
+        h.E.UpdateCapsLock();
+        h.Type("git");
+        var s = new Screen(h);
+        Assert.True(Shows(s, "git status"));
+
+        caps = true;
+        Assert.True(h.E.UpdateCapsLock());
+        s.Draw();
+        var frame = h.T.Output.ToString();
+        Assert.True(frame.LastIndexOf("git status") < frame.IndexOf("\x1b[J"), "the list was erased before it was drawn");
+        Assert.Contains("CAPS", s.S.Line(0));
+        Assert.True(Shows(s, "git status") && Shows(s, "git stash"));
+
+        caps = false;
+        h.E.UpdateCapsLock();
+        s.Draw();
+        Assert.DoesNotContain("CAPS", s.S.Line(0));
+        Assert.True(Shows(s, "git status") && Shows(s, "git stash"));
+    }
+
+    [Fact]
+    public void RowsLeftFromTheLastDrawingAreCleared()
+    {
+        var h = new Harness("git status", "git stash");
+        Options.Set("complete_auto_view", "list");
+        h.Type("git");
+        var s = new Screen(h);
+        Assert.True(Shows(s, "git stash"));
+        h.Type("x");                        // the list goes away
+        s.Draw();
+        Assert.Equal("PS> gitx", s.S.Line(0));
+        Assert.All(s.S.Lines(1, 9), l => Assert.Equal("", l));
+        h.Keys("DEL", "DEL", "DEL");        // the rest of a longer row goes too
+        s.Draw();
+        Assert.False(Shows(s, "gitx"));
+    }
+
+    [Fact]
+    public void ClearingARowKeepsTheRightPrompt()
+    {
+        var h = new Harness("git status");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("prompt_rps1", "[rp]");
+        h.E.StartLine();
+        h.Type("abcdef");
+        var s = new Screen(h);
+        h.Keys("DEL", "DEL");
+        s.Draw();
+        Assert.Equal("PS> abcd".PadRight(35) + "[rp]", s.S.Line(0));
+        Assert.Equal((0, 8), (s.S.Row, s.S.Col));
+    }
+
+    [Fact]
+    public void AFullRowKeepsItsLastCell()
+    {
+        var h = new Harness();
+        h.Type(new string('x', 40));        // ends in the first column of the second row
+        var s = new Screen(h);
+        s.Draw();
+        Assert.Equal("PS> " + new string('x', 36), s.S.Line(0));
+        Assert.Equal("xxxx", s.S.Line(1));
+        h.Keys("DEL", "DEL", "DEL", "DEL"); // now the cursor stays behind the full row
+        s.Draw();
+        Assert.Equal("PS> " + new string('x', 36), s.S.Line(0));
+    }
+
+    [Fact]
+    public void RowsAtTheBottomAreOnlyErasedWhenTheyGoAway()
+    {
+        var h = new Harness("git status", "git stash");
+        Options.Set("complete_auto_view", "list");
+        Options.Set("prompt_bottom_left", "BAR");
+        h.Type("git");
+        var s = new Screen(h);
+        Assert.StartsWith("BAR", s.S.Line(9));
+
+        s.Draw();
+        Assert.DoesNotContain("\x1b[J", h.T.Output.ToString());
+        Assert.StartsWith("BAR", s.S.Line(9));
+
+        h.Type("x");                        // the list goes away, between it and the bar too
+        s.Draw();
+        Assert.DoesNotContain("\x1b[J", h.T.Output.ToString());
+        Assert.Equal("PS> gitx", s.S.Line(0));
+        Assert.All(s.S.Lines(1, 8), l => Assert.Equal("", l));
+        Assert.StartsWith("BAR", s.S.Line(9));
+        Assert.Equal((0, 8), (s.S.Row, s.S.Col));
+
+        Options.Set("prompt_bottom_left", "");
+        s.Draw();
+        Assert.Equal("", s.S.Line(9));
+    }
+
+    [Fact]
+    public void RowsAtTheBottomStayWhenTheInputGrowsIntoThem()
+    {
+        var h = new Harness();
+        Options.Set("prompt_bottom_left", "BAR");
+        var s = new Screen(h);
+        for (int i = 0; i < 12; i++)
+        {
+            h.Keys("C-q", "C-j");
+            h.Type("line" + i);
+            s.Draw();
+            Assert.StartsWith("BAR", s.S.Line(9));
+            Assert.Equal(1, s.S.Lines(0, 10).Count(l => l.StartsWith("BAR")));
+        }
+        Assert.True(Shows(s, "line11"));
+    }
+
     [Fact]
     public void RightPromptFollowsTheMode()
     {

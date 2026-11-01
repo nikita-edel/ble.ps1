@@ -35,7 +35,7 @@ public sealed partial class Editor
         W("self-insert", (e, k) =>
         {
             if (k.Char == '\0') { e.Bell(); return; }
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             e.Insert(new string(k.Char, n));
         });
         W("quoted-insert", (e, k) =>
@@ -56,7 +56,7 @@ public sealed partial class Editor
         W("magic-space", (e, k) =>
         {
             if ((!e.MarkActive || e.MarkKind != MarkKind.Shift) && Options.Get("edit_magic_expand").Contains("sabbrev")) e.ExpandAbbrev();
-            e.Insert(new string(' ', Math.Max(1, e.CountArg())));
+            e.Insert(new string(' ', e.Repeat));
         });
         W("overwrite-mode", (e, k) => e.Overwrite = !e.Overwrite);
         W("paste-from-clipboard", (e, k) =>
@@ -69,23 +69,23 @@ public sealed partial class Editor
         // ---- movement ----
         W("forward-char", (e, k) =>
         {
-            if (e.Point == e.Text.Length && e.AcceptSuggestion(false)) return;
+            if (e.AcceptSuggestion(false)) return;
             int n = e.CountArg();
             e.Point = Math.Clamp(e.Point + n, 0, e.Text.Length);
         });
         W("backward-char", (e, k) => e.Point = Math.Clamp(e.Point - e.CountArg(), 0, e.Text.Length));
         W("forward-cword", (e, k) =>
         {
-            if (e.Point == e.Text.Length && e.AcceptSuggestion(true)) return;
-            for (int i = 0; i < Math.Max(1, e.CountArg()); i++) e.Point = TextOps.ForwardWord(e.Text, e.Point, TextOps.IsCWord);
+            if (e.AcceptSuggestion(true)) return;
+            for (int i = 0; i < e.Repeat; i++) e.Point = TextOps.ForwardWord(e.Text, e.Point, TextOps.IsCWord);
         });
-        W("backward-cword", (e, k) => { for (int i = 0; i < Math.Max(1, e.CountArg()); i++) e.Point = TextOps.BackwardWord(e.Text, e.Point, TextOps.IsCWord); });
+        W("backward-cword", (e, k) => { for (int i = 0; i < e.Repeat; i++) e.Point = TextOps.BackwardWord(e.Text, e.Point, TextOps.IsCWord); });
         W("forward-uword", (e, k) =>
         {
-            if (e.Point == e.Text.Length && e.AcceptSuggestion(true, unixWord: true)) return;
-            for (int i = 0; i < Math.Max(1, e.CountArg()); i++) e.Point = TextOps.ForwardWord(e.Text, e.Point, TextOps.IsUWord);
+            if (e.AcceptSuggestion(true, unixWord: true)) return;
+            for (int i = 0; i < e.Repeat; i++) e.Point = TextOps.ForwardWord(e.Text, e.Point, TextOps.IsUWord);
         });
-        W("backward-uword", (e, k) => { for (int i = 0; i < Math.Max(1, e.CountArg()); i++) e.Point = TextOps.BackwardWord(e.Text, e.Point, TextOps.IsUWord); });
+        W("backward-uword", (e, k) => { for (int i = 0; i < e.Repeat; i++) e.Point = TextOps.BackwardWord(e.Text, e.Point, TextOps.IsUWord); });
         Widgets["forward-word"] = Widgets["forward-cword"];
         Widgets["backward-word"] = Widgets["backward-cword"];
         W("beginning-of-line", (e, k) =>
@@ -96,18 +96,18 @@ public sealed partial class Editor
         });
         W("end-of-line", (e, k) =>
         {
-            if (e.Point == e.Text.Length && e.AcceptSuggestion(false)) return;
+            if (e.AcceptSuggestion(false)) return;
             int le = e.LineEnd(e.Point);
             e.Point = e.Point == le && e.LastWidget == "end-of-line" ? e.Text.Length : le;
         });
         W("beginning-of-text", (e, k) => e.Point = 0);
         W("end-of-text", (e, k) =>
         {
-            if (e.Point == e.Text.Length && e.AcceptSuggestion(false)) return;
+            if (e.AcceptSuggestion(false)) return;
             e.Point = e.Text.Length;
         });
-        W("backward-line", (e, k) => { if (!e.MoveLine(-Math.Max(1, e.CountArg()))) e.Bell(); });
-        W("forward-line", (e, k) => { if (!e.MoveLine(Math.Max(1, e.CountArg()))) e.Bell(); });
+        W("backward-line", (e, k) => { if (!e.MoveLine(-e.Repeat)) e.Bell(); });
+        W("forward-line", (e, k) => { if (!e.MoveLine(e.Repeat)) e.Bell(); });
         W("character-search-forward", (e, k) => e.CharSearch(true));
         W("character-search-backward", (e, k) => e.CharSearch(false));
 
@@ -161,7 +161,7 @@ public sealed partial class Editor
             // ble.sh delete-region-or: an active region is deleted first
             if (e.MarkActive && e.MarkKind is MarkKind.Shift or MarkKind.Emacs) { var (a, b) = e.RegionBounds(); e.Delete(a, b); e.MarkActive = false; return; }
             if (e.Point == 0) { e.Bell(); return; }
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             int start = Math.Max(0, e.Point - n);
             if (start > 0 && char.IsLowSurrogate(e.Text[start]) && char.IsHighSurrogate(e.Text[start - 1])) start--;
             e.Delete(start, e.Point);
@@ -170,7 +170,7 @@ public sealed partial class Editor
         {
             if (e.MarkActive && e.MarkKind is MarkKind.Shift or MarkKind.Emacs) { var (a, b) = e.RegionBounds(); e.Delete(a, b); e.MarkActive = false; return; }
             if (e.Point >= e.Text.Length) { e.Bell(); return; }
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             int end = Math.Min(e.Text.Length, e.Point + n);
             if (end < e.Text.Length && char.IsLowSurrogate(e.Text[end])) end++;
             e.Delete(e.Point, end);
@@ -274,7 +274,7 @@ public sealed partial class Editor
         // ---- undo ----
         W("undo", (e, k) =>
         {
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             for (int i = 0; i < n; i++)
             {
                 if (e._undo.Count == 0) { e.Bell(); return; }
@@ -285,7 +285,7 @@ public sealed partial class Editor
         });
         W("redo", (e, k) =>
         {
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             for (int i = 0; i < n; i++)
             {
                 if (e._redo.Count == 0) { e.Bell(); return; }
@@ -390,7 +390,7 @@ public sealed partial class Editor
     {
         int end = TextOps.ForwardWord(Text, Point, TextOps.IsCWord);
         var part = Text.Substring(Point, end - Point);
-        Text = Text.Substring(0, Point) + f(part) + Text.Substring(end);
+        Splice(Point, end, f(part));
         Point = end;
     }
 
@@ -430,7 +430,7 @@ public sealed partial class Editor
 
     void CharSearch(bool forward)
     {
-        int count = Math.Max(1, CountArg());
+        int count = Repeat;
         Info = forward ? "(char-search)" : "(char-search-backward)";
         Modal = key =>
         {
@@ -464,12 +464,12 @@ public sealed partial class Editor
     {
         if (Abbrevs.Count == 0) return false;
         int end = Point, start = end;
-        while (start > 0 && !char.IsWhiteSpace(Text[start - 1]) && ";|&(){}".IndexOf(Text[start - 1]) < 0) start--;
+        while (start > 0 && !char.IsWhiteSpace(Text[start - 1]) && !";|&(){}".Contains(Text[start - 1])) start--;
         if (start == end) return false;
         var word = Text.Substring(start, end - start);
         if (!Abbrevs.TryGetValue(word, out var val)) return false;
         string rep = val is ScriptBlock sb ? Shell.Evaluate(sb) : val.ToString() ?? "";
-        Text = Text.Substring(0, start) + rep + Text.Substring(end);
+        Splice(start, end, rep);
         Point = start + rep.Length;
         return true;
     }
@@ -537,13 +537,13 @@ public sealed partial class Editor
     {
         W("history-prev", (e, k) =>
         {
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             if (e.HistIndex - n < 0) { if (e.HistIndex == 0) { e.Bell(); return; } n = e.HistIndex; }
             e.HistoryGoto(e.HistIndex - n);
         });
         W("history-next", (e, k) =>
         {
-            int n = Math.Max(1, e.CountArg());
+            int n = e.Repeat;
             if (e.HistIndex >= e.History.Count) { e.Bell(); return; }
             e.HistoryGoto(Math.Min(e.History.Count, e.HistIndex + n));
         });
@@ -626,130 +626,4 @@ public sealed partial class Editor
         HistoryGoto(idx);
         Point = Math.Min(keep, Text.Length);
     }
-
-    // ---- incremental search ----
-
-    sealed class IsearchState
-    {
-        public string Query = "";
-        public bool Backward;
-        public int Index;     // history index (History.Count = the line being edited)
-        public int Pos;       // match position
-        public bool Failed;
-        public string OrigText = "";
-        public int OrigPoint;
-        public int OrigIndex;
-        public readonly Stack<(string Query, int Index, int Pos, bool Failed, bool Backward)> Stack = new();
-    }
-
-    void StartIsearch(bool backward)
-    {
-        var st = new IsearchState { Backward = backward, Index = HistIndex, Pos = Point, OrigText = Text, OrigPoint = Point, OrigIndex = HistIndex };
-        UpdateIsearchInfo(st);
-        Modal = key => IsearchKey(st, key);
-    }
-
-    void UpdateIsearchInfo(IsearchState st)
-    {
-        var dir = st.Backward ? "reverse-i-search" : "i-search";
-        Info = (st.Failed ? "(failed " + dir + ")" : "(" + dir + ")") + "`" + st.Query + "'";
-        InfoFace = st.Failed ? "status_error" : "status_info";
-        MatchRegion = st.Query.Length > 0 && !st.Failed ? (st.Pos, st.Pos + st.Query.Length) : null;
-    }
-
-    bool IsearchFind(IsearchState st, int fromIndex, int fromPos, bool backward, bool includeCurrent)
-    {
-        var q = st.Query;
-        if (q.Length == 0) return true;
-        var cmp = History.SmartCase(q);
-        int idx = fromIndex;
-        int pos = fromPos;
-        bool first = true;
-        while (idx >= 0 && idx <= History.Count)
-        {
-            var line = idx == HistIndex ? Text : (idx < History.Count ? History[idx] : _histEdits.GetValueOrDefault(History.Count, ""));
-            int found;
-            if (line.Length < q.Length) found = -1;
-            else if (backward)
-            {
-                int start = first ? (includeCurrent ? Math.Min(pos, line.Length - q.Length) : pos - 1) : line.Length - q.Length;
-                found = start < 0 ? -1 : line.LastIndexOf(q, Math.Min(line.Length - 1, start + q.Length - 1), cmp);
-                if (found > start) found = -1;
-            }
-            else
-            {
-                int start = first ? (includeCurrent ? pos : pos + 1) : 0;
-                found = start > line.Length ? -1 : line.IndexOf(q, Math.Min(start, line.Length), cmp);
-            }
-            if (found >= 0)
-            {
-                if (idx != HistIndex) HistoryGoto(idx);
-                st.Index = idx; st.Pos = found;
-                Point = found;
-                return true;
-            }
-            first = false;
-            idx += backward ? -1 : 1;
-        }
-        return false;
-    }
-
-    bool IsearchKey(IsearchState st, KeyInput key)
-    {
-        void Finish() { Modal = null; Info = null; MatchRegion = null; }
-        switch (key.Name)
-        {
-            case "C-r":
-            case "C-s":
-                {
-                    bool back = key.Name == "C-r";
-                    st.Stack.Push((st.Query, st.Index, st.Pos, st.Failed, st.Backward));
-                    st.Backward = back;
-                    if (st.Query.Length == 0 && _lastIsearch.Length > 0) st.Query = _lastIsearch;
-                    st.Failed = !IsearchFind(st, st.Index, st.Pos, back, includeCurrent: false);
-                    UpdateIsearchInfo(st);
-                    return true;
-                }
-            case "DEL":
-            case "C-h":
-                if (st.Stack.Count == 0) { Bell(); return true; }
-                {
-                    var (q, idx, pos, failed, back) = st.Stack.Pop();
-                    st.Query = q; st.Backward = back; st.Failed = failed;
-                    if (idx != HistIndex) HistoryGoto(idx);
-                    st.Index = idx; st.Pos = pos; Point = Math.Min(pos, Text.Length);
-                    UpdateIsearchInfo(st);
-                    return true;
-                }
-            case "C-g":
-                Finish();
-                if (HistIndex != st.OrigIndex) HistoryGoto(st.OrigIndex);
-                Text = st.OrigText; Point = st.OrigPoint;
-                return true;
-            case "RET":
-                _lastIsearch = st.Query;
-                Finish();
-                AcceptLine();
-                return true;
-            case "C-j":
-            case "ESC":
-                _lastIsearch = st.Query;
-                Finish();
-                return true;
-        }
-        if (key.IsPrintable)
-        {
-            st.Stack.Push((st.Query, st.Index, st.Pos, st.Failed, st.Backward));
-            st.Query += key.Char;
-            if (!st.Failed) st.Failed = !IsearchFind(st, st.Index, st.Pos, st.Backward, includeCurrent: true);
-            UpdateIsearchInfo(st);
-            return true;
-        }
-        // any other key: leave isearch and process the key normally
-        _lastIsearch = st.Query;
-        Finish();
-        return false;
-    }
-
-    string _lastIsearch = "";
 }

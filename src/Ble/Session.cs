@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Ble;
 
@@ -100,7 +101,7 @@ public static class Session
         var en = Options.Get("exec_elapsed_enabled");
         if (en != (string)Options.Defaults["exec_elapsed_enabled"])
         {
-            var m = System.Text.RegularExpressions.Regex.Match(en, @">=?\s*(\d+)");
+            var m = Regex.Match(en, @">=?\s*(\d+)");
             return m.Success && long.TryParse(m.Groups[1].Value, out var n) ? n : -1;
         }
         var t = Options.Get("exec_elapsed_threshold");

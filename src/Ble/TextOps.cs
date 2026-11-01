@@ -88,7 +88,7 @@ public static class TextOps
     {
         const string open = "([{", close = ")]}";
         int n = t.Length;
-        while (p < n && t[p] != '\n' && open.IndexOf(t[p]) < 0 && close.IndexOf(t[p]) < 0) p++;
+        while (p < n && t[p] != '\n' && !open.Contains(t[p]) && !close.Contains(t[p])) p++;
         if (p >= n || t[p] == '\n') return -1;
         char c = t[p];
         int oi = open.IndexOf(c);

@@ -17,7 +17,6 @@ public sealed class History
 
     readonly List<string> _items = new();
     string? _blob;          // Sep + newest + Sep + ... + oldest + Sep
-    int[]? _offsets;        // start offset in _blob of k-th newest entry
     long _knownSize;
     readonly Dictionary<string, List<string>> _dirs = new(StringComparer.Ordinal);   // entry -> directories, most recent last
     long _knownDirsSize;
@@ -53,12 +52,24 @@ public sealed class History
         Invalidate();
     }
 
-    void Invalidate() { _blob = null; _offsets = null; _lines = null; _lineParents = null; _lineBlob = null; }
+    void Invalidate() { _blob = null; _lines = null; _lineParents = null; _lineBlob = null; }
+
+    /// <summary>The entries (with lines: Lines), newest first.</summary>
+    public IEnumerable<string> Newest(bool lines = false)
+    {
+        if (lines)
+        {
+            foreach (var line in Lines) yield return line;
+            yield break;
+        }
+        for (int i = _items.Count - 1; i >= 0; i--) yield return _items[i];
+    }
 
     /// <summary>
     /// What complete_auto_history_multiline=line suggests from, newest first: single-line entries, and each
     /// line of the multi-line entries on its own, without indentation. Lines with no letter or
-    /// digit (a lone "}") are left out. Only suggestions use this; the history keeps whole entries.
+    /// digit (a lone "}") and the lines of &lt;# #&gt; comments are left out. Only suggestions use this;
+    /// the history keeps whole entries.
     /// </summary>
     public IReadOnlyList<string> Lines
     {
@@ -83,10 +94,14 @@ public sealed class History
                 continue;
             }
             var parts = entry.Split('\n');
+            bool inComment = false;   // going up: between #> and <#
             for (int k = parts.Length - 1; k >= 0; k--)
             {
                 var line = parts[k].Trim();
-                if (!line.Any(char.IsLetterOrDigit)) continue;
+                if (line.EndsWith("#>", StringComparison.Ordinal)) inComment = true;
+                bool skip = inComment || !line.Any(char.IsLetterOrDigit);
+                if (line.StartsWith("<#", StringComparison.Ordinal)) inComment = false;
+                if (skip) continue;
                 if (seen.Add(line)) lines.Add(line);
                 if (!parents.TryGetValue(line, out var list)) parents[line] = list = new List<string>(1);
                 if (!list.Contains(entry)) list.Add(entry);
@@ -366,41 +381,39 @@ public sealed class History
         catch { }
     }
 
-    void BuildBlob()
+    string Blob(bool lines)
     {
-        var sb = new StringBuilder();
-        var offs = new int[_items.Count];
-        sb.Append(Sep);
-        for (int k = 0; k < _items.Count; k++)
-        {
-            offs[k] = sb.Length;
-            sb.Append(_items[_items.Count - 1 - k]).Append(Sep);
-        }
-        _blob = sb.ToString();
-        _offsets = offs;
+        var sb = new StringBuilder().Append(Sep);
+        foreach (var e in Newest(lines)) sb.Append(e).Append(Sep);
+        return sb.ToString();
     }
 
     /// <summary>Most recent entry that starts with prefix and is longer than it.</summary>
     public string? FindPrefix(string prefix) => PrefixMatches(prefix).FirstOrDefault();
 
-    /// <summary>Entries (with lines: Lines) that start with prefix and are longer than it, newest first.</summary>
-    public IEnumerable<string> PrefixMatches(string prefix, bool lines = false)
+    /// <summary>Entries (with lines: Lines) that start with prefix (HistoryQuery) and are longer than it, newest first.</summary>
+    public IEnumerable<string> PrefixMatches(string prefix, bool lines = false) => PrefixMatches(new HistoryQuery(prefix), lines);
+
+    /// <inheritdoc cref="PrefixMatches(string, bool)"/>
+    public IEnumerable<string> PrefixMatches(HistoryQuery query, bool lines = false)
     {
-        if (prefix.Length == 0 || _items.Count == 0) yield break;
-        if (prefix.IndexOf(Sep) >= 0) yield break;
-        if (lines) _lineBlob ??= Sep + string.Concat(Lines.Select(l => l + Sep));
-        else if (_blob == null) BuildBlob();
-        var blob = lines ? _lineBlob! : _blob!;
-        var needle = Sep + prefix;
+        if (query.Head.Length == 0 || _items.Count == 0) yield break;
+        if (query.Head.Contains(Sep)) yield break;
+        var blob = lines ? _lineBlob ??= Blob(true) : _blob ??= Blob(false);
+        var needle = Sep + query.Head;
         int from = 0;
         while (true)
         {
             int idx = blob.IndexOf(needle, from, StringComparison.Ordinal);
             if (idx < 0) yield break;
             int start = idx + 1;
-            int end = blob.IndexOf(Sep, start + prefix.Length);
+            int end = blob.IndexOf(Sep, start + query.Head.Length);
             if (end < 0) yield break;
-            if (end - start > prefix.Length) yield return blob.Substring(start, end - start);
+            if (end - start > query.Head.Length)
+            {
+                var entry = blob.Substring(start, end - start);
+                if (query.Rest(entry) != null) yield return entry;
+            }
             from = end;
         }
     }

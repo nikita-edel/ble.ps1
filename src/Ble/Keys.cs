@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Ble;
 
 /// <summary>A decoded key press. Name uses ble.sh style names: 'a', 'C-x', 'M-f', 'RET', 'S-TAB', 'C-left'.</summary>
@@ -34,8 +36,8 @@ public static class KeyNames
         ["up"] = "up", ["down"] = "down", ["left"] = "left", ["right"] = "right",
     };
 
-    static readonly System.Text.RegularExpressions.Regex PlusModifier =
-        new(@"^(ctrl|control|alt|meta|shift)\+(?=.)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    static readonly Regex PlusModifier =
+        new(@"^(ctrl|control|alt|meta|shift)\+(?=.)", RegexOptions.IgnoreCase);
 
     static readonly Dictionary<ConsoleKey, char> OemChars = new()
     {
@@ -175,7 +177,7 @@ public static class KeyNames
         if (string.IsNullOrEmpty(tok)) throw new FormatException("empty key");
         bool ctrl = false, alt = false, shift = false;
         // PSReadLine style: Ctrl+Shift+a
-        System.Text.RegularExpressions.Match pm;
+        Match pm;
         while ((pm = PlusModifier.Match(tok)).Success)
         {
             var m = pm.Groups[1].Value.ToLowerInvariant();

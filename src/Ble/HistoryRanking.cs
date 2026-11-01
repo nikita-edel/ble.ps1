@@ -1,5 +1,9 @@
 namespace Ble;
 
+/// <summary>Values of complete_auto_history_multiline: multi-line entries are not suggested (None),
+/// each of their lines is (Lines, see History.Lines), or they are, whole (Whole).</summary>
+public enum MultilineHistory { None, Lines, Whole }
+
 /// <summary>
 /// Chooses and orders history entries for suggestions; the inline suggestion and the list view both
 /// use it. The rules, in order:
@@ -11,16 +15,13 @@ namespace Ble;
 ///   2. Entries that ran in the current directory come before the others (complete_auto_history_cwd).
 ///   3. Newer entries come before older ones.
 /// complete_auto_history_multiline says what happens to multi-line entries (MultilineHistory).
+/// Entries that are nothing but comments are never suggested (IsComment).
 /// Rule 1 looks at the file system, so it runs for at most maxChecks entries per lookup; the
 /// entries after that are left out.
 /// Top also shows entries that mean the same command once (complete_auto_history_merge, see Key):
 /// the best of them stays.
 /// Similar finds entries for a query that matches none (complete_auto_history_fuzzy).
 /// </summary>
-/// <summary>Values of complete_auto_history_multiline: multi-line entries are not suggested (None),
-/// each of their lines is (Lines, see History.Lines), or they are, whole (Whole).</summary>
-public enum MultilineHistory { None, Lines, Whole }
-
 public sealed class HistoryRanking
 {
     public const int InlineChecks = 50, ListChecks = 100;
@@ -46,7 +47,22 @@ public sealed class HistoryRanking
 
     bool RanHere(string entry) => _dir != null && _history.RanIn(entry, _dir, _multiline == MultilineHistory.Lines);
 
-    bool Allowed(string entry) => _multiline == MultilineHistory.Whole || !entry.Contains('\n');
+    bool Allowed(string entry) => !IsComment(entry) && (_multiline == MultilineHistory.Whole || !entry.Contains('\n'));
+
+    /// <summary>Whether the entry is only comments: every line starts with #, or it is one &lt;# #&gt; block.
+    /// A comment behind a command doesn't count.</summary>
+    public static bool IsComment(string entry)
+    {
+        var t = entry.AsSpan().Trim();
+        if (t.IsEmpty || t[0] is not ('#' or '<')) return false;
+        if (t.Length >= 4 && t.StartsWith("<#") && t.EndsWith("#>") && t[2..^2].IndexOf("#>") < 0) return true;
+        foreach (var line in t.EnumerateLines())
+        {
+            var l = line.TrimStart();
+            if (!l.IsEmpty && l[0] != '#') return false;
+        }
+        return true;
+    }
 
     bool Exhausted => _valid != null && _checks >= _maxChecks;
 
@@ -173,9 +189,8 @@ public sealed class HistoryRanking
         var q = Words(query);
         if (q.Length == 0 || q.Sum(w => w.Length) < 3) return new List<string>();
         bool partial = !char.IsWhiteSpace(query[^1]);
-        var items = lines ? history.Lines : history.Items.Reverse();
         int age = -1;
-        foreach (var e in items)   // entries are unique (History keeps one of each)
+        foreach (var e in history.Newest(lines))   // entries are unique (History keeps one of each)
         {
             age++;
             if (found.Count >= limit) break;

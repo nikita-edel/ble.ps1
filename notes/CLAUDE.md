@@ -41,16 +41,22 @@ module/ble.psd1         exports (add new cmdlets/aliases here AND [Alias] on the
 module/default.blerc    copy of the owner's $ps_config\.blerc; New-BleRc copies it out (keep it loading with 0 warnings)
 src/Ble/Session.cs      static entry: ReadLine(engine, lastStatus), exec/elapsed marks, history file
 src/Ble/Editor.cs       line state, main loop (NextKey/ProcessKey/Dispatch), undo, kill ring, BuildModel, edit commands
-src/Ble/Widgets.cs      emacs widgets + history + isearch; static ctor registers all widget groups
+src/Ble/Widgets.cs      emacs widgets + history; static ctor registers all widget groups
 src/Ble/WidgetsBle.cs   widgets added to match ble.sh default bindings (sword, zap, macros, M-x, dabbrev, ...)
-src/Ble/Completion.cs   Menu, TAB logic, ambiguous (fuzzy) completion, auto-suggestions (incl. ble.sh's " [cand] " form), idle tasks
+src/Ble/Isearch.cs      incremental history search
+src/Ble/Completion.cs   TAB logic, ambiguous (fuzzy) completion, completion cache, keeping the path spelling the user typed
+src/Ble/Menu.cs         the completion menu (layout, moving the selection)
+src/Ble/Suggestions.cs  auto-suggestions (incl. ble.sh's " [cand] " form), accepting them, idle tasks
 src/Ble/ListView.cs     PSReadLine-like list view of history matches (bleopt complete_auto_view=list, f2)
-src/Ble/BleRc.cs        Import-BleRc: .blerc reader (bash subset: lexer, parser, executor) + BleModules (ble-import built-ins)
+src/Ble/BleRc.cs        Import-BleRc: .blerc reader (bash subset: lexer, parser, executor)
+src/Ble/BleModules.cs   ble-import built-ins
 src/Ble/Vi.cs           vi parser (ViKey/ViParse/ViMotion/ViOperator/ViSimple/ViVisual), registers, dot-repeat
-src/Ble/ViExtra.cs      block visual, q/@ macros, marks, ex (:) commands, select mode (vi_smap)
+src/Ble/ViExtra.cs      block visual, q/@ macros, marks, select mode (vi_smap)
+src/Ble/ViEx.cs         ex (:) commands
 src/Ble/Highlighter.cs  token/AST highlighting with ble.sh rules (see class doc comment); IsValid = command/path
                         checks for history suggestions (+ words that were paths where the entry ran)
-src/Ble/History.cs      PSReadLine-format history + "<file>.dirs" (dir TAB entry): RanIn, DirsOf
+src/Ble/History.cs      PSReadLine-format history + "<file>.dirs" (dir TAB entry): RanIn, DirsOf; Lines = each line on its own
+src/Ble/HistoryQuery.cs what typed text matches in history (space between words doesn't count), Tidy for what is suggested
 src/Ble/HistoryRanking.cs  ALL rules for which history entries are suggested (inline Best, list view Top):
                         validate -> current dir first -> newest. Options are read in Editor.NewHistoryRanking.
                         No per-command special cases (the owner rejected a hardcoded cd list).
@@ -63,9 +69,14 @@ src/Ble/Renderer.cs     relative-cursor ANSI drawing, explicit row breaks, resiz
                         drawn at absolute rows inside ESC 7 / ESC 8 (write "\u001b7": "\x1b7" is one char in C#)
 src/Ble/Keys.cs         ConsoleKeyInfo -> canonical names ("C-M-x"), keyspec parsing
 src/Ble/Keymap.cs       keymaps; Reset() mirrors ble.sh: BindCommon/History/Complete/Arg, BindEmacs, BindViInsert(+Meta)
-src/Ble/Options.cs      bleopt defaults (ble.ps1's, then every ble.sh option; most of those are accepted no-ops),
-                        ble-face defaults, color names; Options.Apply / Faces.Apply parse ble.sh's syntax
+src/Ble/Options.cs      bleopt defaults (ble.ps1's, then every ble.sh option; most of those are accepted no-ops);
+                        Options.Apply parses ble.sh's syntax
+src/Ble/Faces.cs        ble-face defaults, color names; Faces.Apply parses ble.sh's syntax
+src/Ble/Terminal.cs     ITerminal + ConsoleTerminal; tests use FakeTerminal
+src/Ble/TextWidth.cs    display width of text, ANSI stripping
 src/Ble/Shell.cs        IShell (PowerShell interop) + PsShell; tests use FakeShell
+src/Ble/CommandIndex.cs command name indexes + ModuleCommandCheck (fast lookups, see Performance below)
+src/Ble/FileSystemPaths.cs  what a path is (file, directory, executable, link)
 src/Ble/Cmdlets.cs      ble-bind, bleopt, ble-face, ble-sabbrev, ble-import, Import-BleRc, New-BleRc, ble-history,
                         Clear-BleHistory, Register-/Invoke-BleWidget
 tests/Ble.Tests/        Harness.cs (drive Editor by key names), Fakes.cs (FakeTerminal/FakeShell/VtScreen), *Tests.cs, FuzzTests.cs

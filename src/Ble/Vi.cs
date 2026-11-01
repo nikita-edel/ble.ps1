@@ -615,7 +615,7 @@ public sealed partial class Editor
         }
     }
 
-    void TrySetClipboard(string text)
+    static void TrySetClipboard(string text)
     {
         try
         {
@@ -692,7 +692,7 @@ public sealed partial class Editor
                         else { int r = 0; while (r < width && r < l.Length && l[r] == ' ') r++; if (r == 0 && l.StartsWith('\t')) r = 1; l = l.Substring(r); }
                         lines[n] = l;
                     }
-                    sb.Append(string.Join('\n', lines)).Append(Text.Substring(b));
+                    sb.Append(string.Join('\n', lines)).Append(Text.AsSpan(b));
                     Text = sb.ToString();
                     Point = TextOps.FirstNonBlank(Text, s);
                     return ViStatus.Done;
@@ -708,7 +708,7 @@ public sealed partial class Editor
                         "gU" => part.ToUpperInvariant(),
                         _ => new string(part.Select(ch => char.IsUpper(ch) ? char.ToLowerInvariant(ch) : char.ToUpperInvariant(ch)).ToArray()),
                     };
-                    Text = Text.Substring(0, a) + part + Text.Substring(b);
+                    Splice(a, b, part);
                     Point = a;
                     return ViStatus.Done;
                 }
@@ -761,12 +761,12 @@ public sealed partial class Editor
                     if (Point + count > le) return ViStatus.Invalid;
                     if (ch == '\n')
                     {
-                        Text = Text.Substring(0, Point) + "\n" + Text.Substring(Point + count);
+                        Splice(Point, Point + count, "\n");
                         Point++;
                     }
                     else
                     {
-                        Text = Text.Substring(0, Point) + new string(ch, count) + Text.Substring(Point + count);
+                        Splice(Point, Point + count, new string(ch, count));
                         Point += count - 1;
                     }
                     return ViStatus.Done;
@@ -784,7 +784,7 @@ public sealed partial class Editor
                     if (le == ls) return ViStatus.Invalid;
                     int e2 = Math.Min(le, Point + count);
                     var part = new string(Text.Substring(Point, e2 - Point).Select(ch => char.IsUpper(ch) ? char.ToLowerInvariant(ch) : char.ToUpperInvariant(ch)).ToArray());
-                    Text = Text.Substring(0, Point) + part + Text.Substring(e2);
+                    Splice(Point, e2, part);
                     Point = e2;
                     return ViStatus.Done;
                 }
@@ -798,7 +798,7 @@ public sealed partial class Editor
                         int s2 = e2 + 1;
                         if (c == "J") while (s2 < Text.Length && (Text[s2] == ' ' || Text[s2] == '\t')) s2++;
                         var sep = c == "J" && e2 > LineStart(Point) && s2 < Text.Length && Text[s2] != '\n' && Text[s2] != ')' ? " " : "";
-                        Text = Text.Substring(0, e2) + sep + Text.Substring(s2);
+                        Splice(e2, s2, sep);
                         Point = e2;
                     }
                     return ViStatus.Done;
@@ -967,7 +967,7 @@ public sealed partial class Editor
         if (s > ls && Text[s - 1] == '-') s--;
         if (!long.TryParse(Text.AsSpan(s, e - s), out var v)) return false;
         var nv = (v + delta).ToString();
-        Text = Text.Substring(0, s) + nv + Text.Substring(e);
+        Splice(s, e, nv);
         Point = s + nv.Length - 1;
         return true;
     }
@@ -1064,7 +1064,7 @@ public sealed partial class Editor
                     if (ch == '\0') return ViStatus.Invalid;
                     Exit();
                     var part = new string(Text.Substring(a, b - a).Select(x => x == '\n' ? x : ch).ToArray());
-                    Text = Text.Substring(0, a) + part + Text.Substring(b);
+                    Splice(a, b, part);
                     Point = a;
                     return ViStatus.Done;
                 }
@@ -1163,7 +1163,7 @@ public sealed partial class Editor
         if (p < _viReplaceOrig.Length && p >= _viReplaceStart)
         {
             // only valid when the text hasn't shifted: in replace mode text only grows at the end of the line
-            Text = Text.Substring(0, p) + _viReplaceOrig[p] + Text.Substring(p + 1);
+            Splice(p, p + 1, _viReplaceOrig[p].ToString());
         }
         else Text = Text.Remove(p, 1);
         Point = p;

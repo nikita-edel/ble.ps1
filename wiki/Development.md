@@ -51,11 +51,15 @@ editor itself is C#:
 src/Ble/
   Session.cs          entry point from PowerShell, status marks, history setup
   Editor.cs           line state, main loop, key dispatch, undo, drawing model
-  Widgets.cs          emacs widgets, history, incremental search
+  Widgets.cs          emacs widgets, history
   WidgetsBle.cs       widgets for ble.sh's default bindings
-  Completion.cs       menu, TAB, fuzzy matching, suggestions, idle tasks, completion cache
+  Isearch.cs          incremental search
+  Completion.cs       TAB, fuzzy matching, completion cache
+  Menu.cs             completion menu
+  Suggestions.cs      suggestions, idle tasks
   ListView.cs         list view of suggestions
-  Vi.cs, ViExtra.cs   vi modes, operators, registers, macros, marks, ex commands
+  Vi.cs, ViExtra.cs   vi modes, operators, registers, macros, marks
+  ViEx.cs             ex commands
   Highlighter.cs      highlighting from PowerShell's parser
   PromptSequences.cs  \u \w ... and the status line
   Layout.cs           where the mode line, status line and extra rows go (top, above, below, bottom)
@@ -63,9 +67,17 @@ src/Ble/
   Renderer.cs         drawing with relative cursor moves and explicit line breaks
   Keys.cs, Keymap.cs  key names and the default keymaps
   History.cs          history in PSReadLine's file format
-  Options.cs          bleopt and ble-face
+  HistoryQuery.cs     what typed text matches in history
+  HistoryRanking.cs   which history entry is suggested
+  Options.cs          bleopt
+  Faces.cs            ble-face
+  Terminal.cs         the console
+  TextWidth.cs        display width of text
   Shell.cs            everything that calls PowerShell (completion, command lookup, prompt)
+  CommandIndex.cs     fast command lookup
+  FileSystemPaths.cs  what a path is
   BleRc.cs            .blerc reader
+  BleModules.cs       ble-import built-ins
   Cmdlets.cs          ble-bind, bleopt, ble-face, ble-sabbrev, ble-import, Import-BleRc, ble-history
 ```
 

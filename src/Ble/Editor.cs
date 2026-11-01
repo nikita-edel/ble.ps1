@@ -1,4 +1,5 @@
 using System.Management.Automation;
+using System.Reflection;
 
 namespace Ble;
 
@@ -202,8 +203,7 @@ public sealed partial class Editor
         }
         catch (Exception ex)
         {
-            Info = $"ble: {option}: {ex.Message}";
-            InfoFace = "status_error";
+            ShowError($"ble: {option}: {ex.Message}");
         }
     }
 
@@ -273,11 +273,9 @@ public sealed partial class Editor
         Renderer.EraseFromPromptRow(rows);
         _aboveOk = false;   // the reserved rows went with the prompt
         Term.Write(final + "\x1b[0m");
-        var (frows, fcol) = TextWidth.Measure(final, w);
-        Renderer.StartCol = fcol;
+        Renderer.StartCol = TextWidth.Measure(final, w).Col;
         Renderer.CurRow = 0;
         Renderer.Active = true;
-        _ = frows;
     }
 
     // ---- rendering --------------------------------------------------------
@@ -345,8 +343,7 @@ public sealed partial class Editor
         catch (Exception ex)
         {
             if (++_renderFailures > 3) throw;
-            Info = "ble: render error: " + ex.Message;
-            InfoFace = "status_error";
+            ShowError("ble: render error: " + ex.Message);
         }
     }
 
@@ -477,8 +474,7 @@ public sealed partial class Editor
         }
         if (fn == null)
         {
-            Info = $"ble: unknown widget '{name}'";
-            InfoFace = "status_error";
+            ShowError($"ble: unknown widget '{name}'");
             return;
         }
         var bt = Text; var bp = Point;
@@ -521,17 +517,21 @@ public sealed partial class Editor
 
     public void ShowError(Exception ex, string? widget = null)
     {
-        var e = ex is System.Reflection.TargetInvocationException { InnerException: not null } t ? t.InnerException! : ex;
-        Info = widget != null ? $"ble: {widget}: {e.Message}" : $"ble: {e.Message}";
+        var e = ex is TargetInvocationException { InnerException: not null } t ? t.InnerException! : ex;
+        ShowError(widget != null ? $"ble: {widget}: {e.Message}" : $"ble: {e.Message}");
+    }
+
+    public void ShowError(string message)
+    {
+        Info = message;
         InfoFace = "status_error";
     }
 
     public void Bell()
     {
         // ble.sh: a colon-separated list of abell (audible) and vbell (visible); ble.ps1 also takes audible/visible
-        var bell = ":" + Options.Get("edit_bell") + ":";
-        if (bell.Contains(":abell:") || bell.Contains(":audible:")) Term.Write("\a");
-        if ((bell.Contains(":vbell:") || bell.Contains(":visible:")) && Info == null) { Info = "[ble: bell]"; InfoFace = "vbell"; }
+        if (Options.ListHas("edit_bell", "abell") || Options.ListHas("edit_bell", "audible")) Term.Write("\a");
+        if ((Options.ListHas("edit_bell", "vbell") || Options.ListHas("edit_bell", "visible")) && Info == null) { Info = "[ble: bell]"; InfoFace = "vbell"; }
     }
 
     // ---- shell commands bound to keys --------------------------------------
@@ -642,6 +642,16 @@ public sealed partial class Editor
         Point = Math.Clamp(point, 0, text.Length);
     }
 
+    /// <summary>Replaces the text between a and b. The cursor stays.</summary>
+    void Splice(int a, int b, string s) => Text = string.Concat(Text.AsSpan(0, a), s, Text.AsSpan(b));
+
+    /// <summary>Replaces the text from start on and moves the cursor to the end.</summary>
+    void ReplaceEnd(int start, string s)
+    {
+        Text = string.Concat(Text.AsSpan(0, start), s);
+        Point = Text.Length;
+    }
+
     public void Insert(string s)
     {
         if (MarkActive && MarkKind == MarkKind.Shift)
@@ -651,7 +661,7 @@ public sealed partial class Editor
             Point = a;
             MarkActive = false;
         }
-        if (Overwrite && s.IndexOf('\n') < 0)
+        if (Overwrite && !s.Contains('\n'))
         {
             int le = LineEnd(Point);
             int n = Math.Min(s.Length, le - Point);
@@ -713,6 +723,9 @@ public sealed partial class Editor
         // counts are capped: a runaway M-3 M-3 M-3 ... must not insert millions of characters
         return int.TryParse(Arg, out var n) ? Math.Clamp(n, -MaxCount, MaxCount) : def;
     }
+
+    /// <summary>CountArg for what happens at least once.</summary>
+    public int Repeat => Math.Max(1, CountArg());
 
     public bool HasArg => Arg.Length > 0;
 

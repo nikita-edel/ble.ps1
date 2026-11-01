@@ -1,4 +1,5 @@
 using System.Management.Automation;
+using System.Text.RegularExpressions;
 
 namespace Ble;
 
@@ -443,7 +444,7 @@ public sealed class InvokeBleHistoryCommand : PSCmdlet
         a = b = -1;
         int Pos(int v) => v < 0 ? count + v : v - 1;
         // "-3" is an offset from the end; "2-5" and "-5--2" are ranges
-        var m = System.Text.RegularExpressions.Regex.Match(s.Trim(), @"^(-?\d+)(?:-(-?\d+))?$");
+        var m = Regex.Match(s.Trim(), @"^(-?\d+)(?:-(-?\d+))?$");
         if (!m.Success) return false;
         a = Pos(int.Parse(m.Groups[1].Value));
         b = m.Groups[2].Success ? Pos(int.Parse(m.Groups[2].Value)) : a;

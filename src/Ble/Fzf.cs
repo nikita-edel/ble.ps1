@@ -56,8 +56,7 @@ public sealed partial class Editor
         }
         catch (Win32Exception)
         {
-            Info = "ble: fzf not found (install it, e.g. `winget install junegunn.fzf`, or set $env:BLE_FZF)";
-            InfoFace = "status_error";
+            ShowError("ble: fzf not found (install it, e.g. `winget install junegunn.fzf`, or set $env:BLE_FZF)");
             return null;
         }
         finally
@@ -111,14 +110,14 @@ public sealed partial class Editor
         var trig = Options.Get("complete_fzf_trigger");
         if (trig.Length == 0) return false;
         int start = Point;
-        while (start > 0 && !char.IsWhiteSpace(Text[start - 1]) && "|;(){}".IndexOf(Text[start - 1]) < 0) start--;
+        while (start > 0 && !char.IsWhiteSpace(Text[start - 1]) && !"|;(){}".Contains(Text[start - 1])) start--;
         var word = Text.Substring(start, Point - start);
         if (!word.EndsWith(trig, StringComparison.Ordinal)) return false;
         var query = word.Substring(0, word.Length - trig.Length);
         var sel = RunFzf("--multi --scheme=path --query=\"" + query.Replace("\"", "\\\"") + "\" " + Env("FZF_COMPLETION_OPTS"), null);
         if (sel == null || sel.Count == 0) return true;
         var rep = string.Join(' ', sel.Select(QuoteArgument)) + " ";
-        Text = Text.Substring(0, start) + rep + Text.Substring(Point);
+        Splice(start, Point, rep);
         Point = start + rep.Length;
         return true;
     }
