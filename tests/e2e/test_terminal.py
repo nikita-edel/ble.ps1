@@ -321,6 +321,20 @@ def test_fzf_file_widget(make_term):
     t.wait_text("fzf-target-file.txt\n")
 
 
+def test_fzf_command_widget(make_term):
+    import shutil
+    import pytest
+    if not shutil.which("fzf"):
+        pytest.skip("fzf not installed")
+    t = make_term(setup="function ble-e2e-cmd { 'ran' }; ble-bind -f 'M-q' fzf-command-widget; ")
+    t.type("ble-e2e-c")
+    t.keys("M-q", delay=1.5)
+    t.keys("RET", delay=1.0)
+    t.wait(lambda: t.line_at_cursor().rstrip() == "PS> ble-e2e-cmd", msg="command inserted")
+    t.keys("RET")
+    t.wait_text("ran\n")
+
+
 def test_ambiguous_path_suggestion(make_term):
     # ble.sh: a word that is not a prefix of the candidate shows " [candidate] "
     t = make_term(setup="New-Item -ItemType Directory .local/bin | Out-Null; bleopt complete_auto_delay=50; ")

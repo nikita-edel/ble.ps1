@@ -23,6 +23,8 @@ public interface IShell
     /// <summary>Optional work done while the user is idle (warms caches). Returns true when there is nothing left to do.</summary>
     bool Warmup() => true;
     CommandKind ResolveCommand(string name);
+    /// <summary>The names of all commands that can be run: aliases, functions, module commands, PATH programs.</summary>
+    IEnumerable<string> CommandNames() => [];
     PathKind ResolvePath(string path);
     VarKind GetVariableKind(string name);
     /// <summary>The value of a variable holding one string or path ($ps_config, $env:APPDATA), else null.</summary>
@@ -105,6 +107,26 @@ public sealed class PsShell : IShell
         var m = Index.Module(name, BuildModuleIndex);
         if (m != CommandKind.NotFound && Check.Exists(name, ModuleOf.GetValueOrDefault(name, ""))) return m;
         return Index.Path(name);
+    }
+
+    public IEnumerable<string> CommandNames()
+    {
+        if (_engine == null) return [];
+        var names = new List<string>();
+        try
+        {
+            // the session's own aliases and functions first (also the ones defined after the index was built)
+            using var ps = NewPs();
+            ps.AddCommand("Get-ChildItem").AddParameter("Path", new[] { "alias:", "function:" }).AddParameter("Name")
+                .AddParameter("ErrorAction", ActionPreference.Ignore);
+            foreach (var o in ps.Invoke())
+                if (o?.BaseObject is string s) names.Add(s);
+        }
+        catch { }
+        try { names.AddRange(Index.ModuleNames(BuildModuleIndex)); } catch { }
+        try { names.AddRange(Index.PathNames()); } catch { }
+        var cmp = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        return names.Distinct(cmp);
     }
 
     static readonly ModuleCommandCheck Check = new();

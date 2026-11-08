@@ -144,6 +144,7 @@ public sealed class FakeShell : IShell
     public int CompleteCalls;
     public CompletionSet? Complete(string text, int cursor, Func<bool>? cancel = null) { CompleteCalls++; return Completer?.Invoke(text, cursor); }
     public CommandKind ResolveCommand(string name) => Commands.TryGetValue(name, out var k) ? k : CommandKind.NotFound;
+    public IEnumerable<string> CommandNames() => Commands.Keys;
     public PathKind ResolvePath(string path) => FileSystemPaths.Resolve(path, Cwd);
     public readonly Dictionary<string, VarKind> VariableKinds = new(StringComparer.OrdinalIgnoreCase);
     public readonly Dictionary<string, string[]> Parameters = new(StringComparer.OrdinalIgnoreCase)

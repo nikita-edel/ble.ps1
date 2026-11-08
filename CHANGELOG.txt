@@ -1,3 +1,6 @@
+0.3.8
+- new fzf widget: fzf-command-widget, that searches thru all possible commands
+
 0.3.7
 - ble-bind -Always: a key for every mode that wins over everything
 - ble* -Reset: restore default value

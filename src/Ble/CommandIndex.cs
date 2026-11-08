@@ -89,6 +89,7 @@ sealed class ModuleCommandCheck
 sealed class CommandIndex
 {
     Dictionary<string, CommandKind>? _path;
+    List<string> _pathNames = [];
     string? _pathVar;
     (string Dir, DateTime Time)[] _dirs = [];
     long _checkedAt;
@@ -120,6 +121,20 @@ sealed class CommandIndex
         return _modules.TryGetValue(name, out var k) ? k : CommandKind.NotFound;
     }
 
+    /// <summary>The names of all module commands (fzf-command-widget).</summary>
+    public IEnumerable<string> ModuleNames(Func<Dictionary<string, CommandKind>> build)
+    {
+        Module("", build);
+        return _modules!.Keys;
+    }
+
+    /// <summary>The programs and scripts in PATH as they are typed (no .exe; .ps1 scripts by their name).</summary>
+    public IReadOnlyList<string> PathNames()
+    {
+        Path("");
+        return _pathNames;
+    }
+
     static DateTime DirTime(string dir)
     {
         try { return Directory.GetLastWriteTimeUtc(dir); } catch { return default; }
@@ -134,6 +149,7 @@ sealed class CommandIndex
         var map = new Dictionary<string, CommandKind>(names);
         var exts = new HashSet<string>((Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
             .Split(';', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
+        var bare = new List<string>();
         var dirs = new List<(string, DateTime)>();
         foreach (var dir in pathVar.Split(System.IO.Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).Distinct(names))
         {
@@ -150,19 +166,20 @@ sealed class CommandIndex
                     if (ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase))
                     {
                         map.TryAdd(file, CommandKind.Script);
-                        map.TryAdd(System.IO.Path.GetFileNameWithoutExtension(file), CommandKind.Script);
+                        if (map.TryAdd(System.IO.Path.GetFileNameWithoutExtension(file), CommandKind.Script)) bare.Add(System.IO.Path.GetFileNameWithoutExtension(file));
                     }
-                    else if (!windows) map.TryAdd(file, CommandKind.Application);
+                    else if (!windows) { if (map.TryAdd(file, CommandKind.Application)) bare.Add(file); }
                     else if (exts.Contains(ext))
                     {
                         map.TryAdd(file, CommandKind.Application);
-                        map.TryAdd(System.IO.Path.GetFileNameWithoutExtension(file), CommandKind.Application);
+                        if (map.TryAdd(System.IO.Path.GetFileNameWithoutExtension(file), CommandKind.Application)) bare.Add(System.IO.Path.GetFileNameWithoutExtension(file));
                     }
                 }
             }
             catch { }
         }
         _dirs = dirs.ToArray();
+        _pathNames = bare;
         _path = map;
     }
 }

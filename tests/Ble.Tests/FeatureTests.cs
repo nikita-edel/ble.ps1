@@ -373,6 +373,29 @@ public class AmbiguousAndFzfTests
         h.E.InvokeWidget("fzf-file-widget", default);
         Assert.Equal("echo|", h.State);
     }
+
+    [Fact]
+    public void FzfCommandWidget()
+    {
+        var h = new Harness();
+        string? lastArgs = null;
+        IReadOnlyList<string>? listed = null;
+        h.E.FzfRunner = (args, input) => { lastArgs = args; listed = input; return ["Get-ChildItem"]; };
+        h.Type("ls | Get-Ch");
+        h.E.InvokeWidget("fzf-command-widget", default);
+        Assert.Equal("ls | Get-ChildItem |", h.State);
+        Assert.Contains("--query=\"Get-Ch\"", lastArgs);
+        Assert.Contains("--read0", lastArgs);
+        Assert.Contains("git", listed!);
+        Assert.Contains("Where-Object", listed!);
+
+        // the cursor inside a word: the whole word is replaced, the space after it is kept
+        h.Keys("C-u");
+        h.Type("Get-Co -Name x");
+        h.Keys("C-a", "C-f");
+        h.E.InvokeWidget("fzf-command-widget", default);
+        Assert.Equal("Get-ChildItem |-Name x", h.State);
+    }
 }
 
 public class PromptAndWidgetTests

@@ -163,6 +163,16 @@ ble-import integration/fzf-key-bindings   # C-t insert files, M-c cd into a dire
 ble-import integration/fzf-completion     # word** then TAB opens fzf
 ```
 
+`fzf-command-widget` lists every command you can run (aliases, functions, cmdlets, also from
+modules that aren't loaded yet, and programs in PATH). The word at the cursor is the starting
+query, and the command you pick replaces it. It has no key by default:
+
+```powershell
+ble-bind -f 'M-q' fzf-command-widget
+```
+
+Extra fzf options for it go in `$env:FZF_COMMAND_OPTS`.
+
 ## Speed
 
 Completion comes from PowerShell itself (`TabExpansion2`). Usually it takes about a millisecond;

@@ -93,6 +93,20 @@ public sealed partial class Editor
             var dir = sel[0];
             e.RunAboveLine(() => e.Shell.RunCommand(ScriptBlock.Create("Set-Location -LiteralPath '" + dir.Replace("'", "''") + "'")));
         });
+        // all commands; the word at the cursor is the query and is replaced by the selection
+        W("fzf-command-widget", (e, k) =>
+        {
+            int start = e.Point;
+            while (start > 0 && !char.IsWhiteSpace(e.Text[start - 1]) && !"|;(){}&".Contains(e.Text[start - 1])) start--;
+            int end = e.Point;
+            while (end < e.Text.Length && !char.IsWhiteSpace(e.Text[end]) && !"|;(){}&".Contains(e.Text[end])) end++;
+            var q = e.Text.Substring(start, end - start).Replace("\"", "\\\"");
+            var sel = e.RunFzf($"--read0 --no-multi --query=\"{q}\" " + Env("FZF_COMMAND_OPTS"), e.Shell.CommandNames().ToList());
+            if (sel == null || sel.Count == 0) return;
+            var rep = sel[0] + (end < e.Text.Length && e.Text[end] == ' ' ? "" : " ");
+            e.Splice(start, end, rep);
+            e.Point = start + sel[0].Length + 1;
+        });
         // C-r: history
         W("fzf-history-widget", (e, k) =>
         {
