@@ -135,23 +135,29 @@ public sealed class HistoryRanking
     /// ones from dir (if given), ~ and the home folder are the same, / and \ are the same, and
     /// .\, ..\, a trailing \, doubled separators and quotes around the word don't count. The
     /// command (first word) and parameters (-x) are never paths. ignoreCase: upper and lower case
-    /// are the same. Spaces between words never count.
+    /// are the same, except in paths where they make different files (Linux). Spaces between words
+    /// never count.
     /// </summary>
     public static string Key(string line, bool paths, bool ignoreCase, string? dir = null, Func<string, bool>? exists = null)
     {
         var words = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (paths)
-            for (int i = 1; i < words.Length; i++) words[i] = PathKey(words[i], dir, exists);
-        var s = string.Join(' ', words);
-        return ignoreCase ? s.ToLowerInvariant() : s;
+        for (int i = 0; i < words.Length; i++)
+        {
+            bool path = false;
+            if (paths && i > 0) words[i] = PathKey(words[i], dir, exists, out path);
+            if (ignoreCase && !(path && FileSystemPaths.CaseSensitive)) words[i] = words[i].ToLowerInvariant();
+        }
+        return string.Join(' ', words);
     }
 
-    static string PathKey(string w, string? dir, Func<string, bool>? exists)
+    static string PathKey(string w, string? dir, Func<string, bool>? exists, out bool isPath)
     {
+        isPath = false;
         if (w.Length >= 2 && w[0] is '\'' or '"' && w[^1] == w[0]) w = w.Substring(1, w.Length - 2);
         if (w.Length == 0 || w[0] == '-' || w.IndexOfAny(['$', '*', '?']) >= 0) return w;
         bool looks = w.IndexOfAny(['/', '\\']) >= 0 || w[0] is '~' or '.';
         if (!looks && !(dir != null && exists != null && exists(Path.Combine(dir, w)))) return w;
+        isPath = true;
         // PowerShell takes \ as a separator everywhere; .NET only on Windows
         if (!OperatingSystem.IsWindows()) w = w.Replace('\\', '/');
         if (w[0] == '~')

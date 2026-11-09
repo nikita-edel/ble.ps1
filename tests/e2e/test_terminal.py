@@ -2,6 +2,8 @@
 import sys
 import time
 
+import pytest
+
 
 def fg_at(t, y, x):
     with t.lock:
@@ -365,4 +367,24 @@ def test_list_view(make_term):
     assert "> Write-Output lv-beta" in t.text() and "[History]" in t.text()   # the list stays while navigating
     t.keys("down", "RET")
     t.wait_text("\nlv-alpha\n")
+    t.wait_prompt()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="file names only differ by case on Linux")
+def test_file_completion_keeps_case(make_term):
+    setup = "New-Item Foo.txt, foo2.txt, FOOBAR.log, Bar.txt, bar2.txt, Bar3.txt | Out-Null; "
+    t = make_term(setup=setup)
+    t.type("Get-Item fo")
+    t.keys("TAB")
+    t.settle(0.8)
+    assert t.line_at_cursor().startswith("PS> Get-Item ./foo2.txt")
+    t.keys("C-u")
+    t.settle(0.3)
+    t.type("Get-Item Ba")                                   # Bar.txt and Bar3.txt, not bar2.txt
+    t.keys("TAB")
+    t.settle(0.8)
+    y, _ = t.cursor()
+    below = "\n".join(t.lines()[y + 1:y + 4])
+    assert "Bar.txt" in below and "Bar3.txt" in below and "bar2.txt" not in below
+    t.keys("C-c")
     t.wait_prompt()

@@ -62,7 +62,7 @@ public sealed partial class Editor
         }
         if (mode == CompleteMode.Normal && !ambiguous)
         {
-            var lcp = TextWidth.CommonPrefix(items.Select(i => i.CompletionText).ToList(), ignoreCase: true);
+            var lcp = CommonCompletionPrefix(items);
             // also replaces a same-length prefix to fix its case (get-c -> Get-C)
             if (lcp.Length >= word.Length && !lcp.Equals(word, StringComparison.Ordinal))
             {
@@ -74,6 +74,9 @@ public sealed partial class Editor
         if (mode is CompleteMode.MenuForward or CompleteMode.MenuBackward)
             StartMenuSelection(mode == CompleteMode.MenuBackward ? -1 : 1);
     }
+
+    static string CommonCompletionPrefix(List<CompletionItem> items) =>
+        TextWidth.CommonPrefix(items.Select(i => i.CompletionText).ToList(), ignoreCase: !items.Any(FileSystemPaths.IsCaseSensitiveFile));
 
     // what a completion replaces, inside the text and not before 'min'
     (int Index, int Length) ReplacementIn(CompletionSet cs, int min = 0)
@@ -179,13 +182,15 @@ public sealed partial class Editor
         }
         var word = Text.Substring(ri, Point - ri);
         var w0 = word.TrimStart('\'', '"');
-        var filtered = m.All.Where(c => c.CompletionText.TrimStart('\'', '"', '&', ' ').StartsWith(w0, StringComparison.OrdinalIgnoreCase)
-                                     || c.ListItemText.StartsWith(w0, StringComparison.OrdinalIgnoreCase)).ToList();
+        static StringComparison CaseOf(CompletionItem c) =>
+            FileSystemPaths.IsCaseSensitiveFile(c) ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        var filtered = m.All.Where(c => c.CompletionText.TrimStart('\'', '"', '&', ' ').StartsWith(w0, CaseOf(c))
+                                     || c.ListItemText.StartsWith(w0, CaseOf(c))).ToList();
         if (filtered.Count == 0 && Options.GetBool("complete_ambiguous") && w0.Length > 0)
         {
             // ble.sh complete_ambiguous: substring, then subsequence matches
-            filtered = m.All.Where(c => c.ListItemText.Contains(w0, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (filtered.Count == 0) filtered = m.All.Where(c => IsSubsequence(w0, c.ListItemText)).ToList();
+            filtered = m.All.Where(c => c.ListItemText.Contains(w0, CaseOf(c))).ToList();
+            if (filtered.Count == 0) filtered = m.All.Where(c => IsSubsequence(w0, c.ListItemText, CaseOf(c))).ToList();
         }
         if (filtered.Count == 0) { CloseMenu(); return; }
         m.Items = filtered;
@@ -195,11 +200,11 @@ public sealed partial class Editor
         m.Selected = -1;
     }
 
-    static bool IsSubsequence(string needle, string hay)
+    static bool IsSubsequence(string needle, string hay, StringComparison cmp)
     {
         int j = 0;
-        foreach (var ch in hay)
-            if (j < needle.Length && char.ToUpperInvariant(ch) == char.ToUpperInvariant(needle[j])) j++;
+        for (int i = 0; i < hay.Length && j < needle.Length; i++)
+            if (string.Compare(hay, i, needle, j, 1, cmp) == 0) j++;
         return j == needle.Length;
     }
 
@@ -243,7 +248,7 @@ public sealed partial class Editor
         // an idle task can ask several times (prefix, then ambiguous): the key goes first
         if (_idleTask && Term.KeyAvailable) return null;
         bool stopped = false;
-        var r = Shell.Complete(text, cursor, _idleTask ? () => stopped = stopped || Term.KeyAvailable : null);
+        var r = FileSystemPaths.KeepCase(Shell.Complete(text, cursor, _idleTask ? () => stopped = stopped || Term.KeyAvailable : null), text, cursor);
         if (stopped) return null;   // incomplete: not cached
         if (_completeCache.Count >= 64) _completeCache.Clear();
         _completeCache[(text, cursor)] = r;
@@ -310,7 +315,7 @@ public sealed partial class Editor
         dir = dir.TrimEnd('\\', '/');
         string quote = completion.Length > 0 && completion[0] is '\'' or '"' ? completion.Substring(0, 1) : "";
         var path = completion.Substring(quote.Length);
-        if (dir.Length == 0 || !PathPrefix(path, dir, ignoreCase: true) || (path.Length > dir.Length && !IsSep(path[dir.Length]))) return completion;
+        if (dir.Length == 0 || !PathPrefix(path, dir, ignoreCase: !FileSystemPaths.CaseSensitive) || (path.Length > dir.Length && !IsSep(path[dir.Length]))) return completion;
         return quote + head + path.Substring(dir.Length);
     }
 }

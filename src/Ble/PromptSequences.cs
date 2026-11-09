@@ -141,7 +141,7 @@ public sealed partial class Editor
     internal static string TildePath(string p)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (home.Length > 0 && p.StartsWith(home, StringComparison.OrdinalIgnoreCase)
+        if (home.Length > 0 && p.StartsWith(home, FileSystemPaths.Comparison)
             && (p.Length == home.Length || p[home.Length] is '\\' or '/'))
             return "~" + p.Substring(home.Length);
         return p;
