@@ -81,7 +81,7 @@ apply to inline suggestions, which only ever show one entry. `bleopt complete_au
 says what counts as the same:
 `path` (paths that point to the same place from the current folder: in `~`, `dev\ble.ps1` is
 `~/dev/ble.ps1`; also `/` and `\`, `~` and your home folder, `.\`, `..\`, `\` at the end, quotes)
-and `case` (upper and lower case). A word without `/`, `\`, `~` or a leading `.` only counts as
+and `case` (upper and lower case, except in paths on Linux). A word without `/`, `\`, `~` or a leading `.` only counts as
 a path when it exists in the current folder, so `cd dev` is `cd ~/dev` in `~`, but `git status`
 stays a word. The default is `path:case`; `''` lists every entry.
 

@@ -4,8 +4,12 @@ using Xunit;
 namespace Ble.Tests;
 
 // complete_auto_history_merge and complete_auto_history_fuzzy
-public class HistoryMatchTests
+public class HistoryMatchTests : IDisposable
 {
+    // merging paths that differ by case; on Linux they are different files (FileCaseTests)
+    public HistoryMatchTests() => FileSystemPaths.CaseSensitive = false;
+    public void Dispose() => FileSystemPaths.CaseSensitive = OperatingSystem.IsLinux();
+
     static readonly string Home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     static string Key(string s, bool paths = true, bool ignoreCase = true) => HistoryRanking.Key(s, paths, ignoreCase);

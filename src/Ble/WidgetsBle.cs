@@ -336,7 +336,7 @@ public sealed partial class Editor
                     var prefix = context switch { "filename" => "Get-Item -LiteralPath ", "variable" => "$", _ => "" };
                     var w = context == "variable" ? word.TrimStart('$') : word;
                     var q = prefix + w;
-                    var cs = Shell.Complete(q, q.Length);
+                    var cs = FileSystemPaths.KeepCase(Shell.Complete(q, q.Length), q, q.Length);
                     if (cs != null && cs.Items.Count > 0) items = cs.Items;
                     break;
                 }
@@ -378,7 +378,7 @@ public sealed partial class Editor
         }
         if (!menuOnly)
         {
-            var lcp = TextWidth.CommonPrefix(items.Select(i => i.CompletionText).ToList(), ignoreCase: true);
+            var lcp = CommonCompletionPrefix(items);
             if (lcp.Length > word.Length) { ReplaceRange(ri, rl, lcp); rl = lcp.Length; }
         }
         Menu = new Menu(items, ri, rl, Text, Point);
