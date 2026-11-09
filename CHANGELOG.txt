@@ -1,3 +1,6 @@
+0.3.9
+- make the file completion on linux case sensitive
+
 0.3.8
 - new fzf widget: fzf-command-widget, that searches thru all possible commands
 
