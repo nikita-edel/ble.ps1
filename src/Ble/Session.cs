@@ -194,7 +194,7 @@ public static class Session
     static string _abovePromptLine = "";
 
     // rows docked to the top of the window cover the first rows: start the prompt below them
-    static void MakeRoomAtTop()
+    internal static void MakeRoomAtTop()
     {
         int top = Editor.RowsWanted("top");
         if (top == 0 || Console.IsOutputRedirected) return;

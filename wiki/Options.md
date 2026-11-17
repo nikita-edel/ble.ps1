@@ -90,6 +90,7 @@ default, `bleopt -Reset 'complete_auto_*'` for several, and `bleopt -Reset` for 
 | `prompt_xterm_title` | | Terminal title |
 | `prompt_ps1_transient` / `prompt_ps1_final` | | Transient prompt: `always`, `same-dir` or `trim` / its text |
 | `prompt_ruler` | | Separator line drawn before each prompt |
+| `canvas_winch_action` | `redraw-here` | When the window is resized: `redraw-here` / `redraw-prev` write the prompt and the line again where the prompt starts, `clear` clears the screen first, `redraw-safe` only redraws the line |
 | `prompt_capslock_indicator` / `capslock_refresh` | `CAPS` (red) / `100` | What [`\q{capslock}`](Prompt#caps-lock) shows, how often caps lock is checked (ms, `''` = off) |
 | `exec_error_mark` | `[ble: error]` | After a failed PowerShell command |
 | `exec_errexit_mark` | `[ble: exit %d]` | After a native program exits with an error |

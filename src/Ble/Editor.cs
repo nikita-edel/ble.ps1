@@ -159,12 +159,7 @@ public sealed partial class Editor
             _keyAfterIdle = true;
             int w = Term.Width;
             int h = Term.Height;
-            if (w != Renderer.Width || h != Renderer.Height)
-            {
-                Renderer.AdjustForResize(w);
-                CheckListViewFit();
-                SafeRender();
-            }
+            if (w != Renderer.Width || h != Renderer.Height) OnResize(w);
             int capsRefresh = Options.GetInt("capslock_refresh", 0);
             if (capsRefresh > 0 && Term.Now - _capsLockChecked >= capsRefresh && UpdateCapsLock()) SafeRender();
             RunIdle();
@@ -693,6 +688,41 @@ public sealed partial class Editor
         if (Widgets.TryGetValue(name, out var fn)) fn(this, default);
         else throw new ArgumentException($"unknown widget '{name}'");
         newLine = Text; newPoint = Point; newMark = MarkActive ? Mark : -1;
+    }
+
+    /// <summary>
+    /// The window changed size. Redraws the prompt too (bleopt canvas_winch_action): a terminal can push it into
+    /// the scrollback when the window gets lower (Ghostty keeps the rows docked at the bottom and drops rows from
+    /// the top), and then only the line would come back.
+    /// </summary>
+    internal void OnResize(int width)
+    {
+        Renderer.AdjustForResize(width);
+        CheckListViewFit();
+        var action = Options.Get("canvas_winch_action");
+        if (Renderer.Active && action is "redraw-here" or "redraw-prev" or "clear")
+            RedrawPromptAfterResize(clear: action == "clear");
+        SafeRender();
+    }
+
+    void RedrawPromptAfterResize(bool clear)
+    {
+        var prompt = Session.PromptText;
+        if (prompt == null) return;
+        var (rows, col) = TextWidth.Measure(prompt, Renderer.Width);
+        if (col != Renderer.StartCol) return;   // prompt was not what we think it was
+        if (clear)
+        {
+            Term.Write("\x1b[H\x1b[2J");
+            Renderer.Active = false;
+            Renderer.CurRow = 0;
+        }
+        // moving up stops at the first row, so a prompt that went into the scrollback is written there
+        else Renderer.EraseFromPromptRow(rows);
+        Session.MakeRoomAtTop();
+        Term.Write(prompt + "\x1b[0m");
+        Renderer.Begin(col);
+        CheckAboveRows();
     }
 
     /// <summary>Writes a fresh prompt (optionally clearing the screen) and restarts drawing after it.</summary>

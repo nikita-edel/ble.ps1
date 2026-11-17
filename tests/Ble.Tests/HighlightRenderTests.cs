@@ -312,4 +312,83 @@ public class RenderTests
         Assert.Equal(1, h.E.Renderer.CurRow);
         Assert.Equal(4, h.E.Renderer.StartCol);
     }
+
+    // a resize redraws the prompt as well: Ghostty pushes it into the scrollback when the window gets lower and
+    // a row is docked at the bottom, which left an empty screen with only the input (bleopt canvas_winch_action)
+    static (Harness H, VtScreen Scr) ResizedAfterPromptScrolledAway(string action)
+    {
+        var h = new Harness();
+        Options.Set("canvas_winch_action", action);
+        Session.ResetForTests();
+        Session.AfterPrompt("top\nPS> ");
+        h.T.Height = 10;
+        h.E.Renderer.Begin(4);
+        h.Type("abc");
+        h.E.SafeRender();
+        // what is left on the screen: the prompt rows went into the scrollback, the cursor stayed on the first row
+        var scr = new VtScreen(80, 10);
+        scr.Feed("\x1b[1;8H");
+        h.T.Output.Clear();
+        h.T.Height = 5;
+        h.E.OnResize(80);
+        scr.Feed(h.T.Output.ToString().Replace("\n", "\r\n"));   // the tty turns LF into CR LF
+        return (h, scr);
+    }
+
+    [Fact]
+    public void ResizeRedrawsThePromptThatWentIntoTheScrollback()
+    {
+        try
+        {
+            var (_, scr) = ResizedAfterPromptScrolledAway("redraw-here");
+            Assert.Equal("top", scr.Line(0));
+            Assert.Equal("PS> abc", scr.Line(1));
+            Assert.Equal((1, 7), (scr.Row, scr.Col));
+        }
+        finally { Session.ResetForTests(); }
+    }
+
+    [Fact]
+    public void ResizeWithClearDrawsThePromptAtTheTop()
+    {
+        try
+        {
+            var (h, scr) = ResizedAfterPromptScrolledAway("clear");
+            Assert.Contains("\x1b[2J", h.T.Output.ToString());
+            Assert.Equal("top", scr.Line(0));
+            Assert.Equal("PS> abc", scr.Line(1));
+        }
+        finally { Session.ResetForTests(); }
+    }
+
+    [Fact]
+    public void ResizeWithRedrawSafeLeavesThePrompt()
+    {
+        try
+        {
+            var (h, scr) = ResizedAfterPromptScrolledAway("redraw-safe");
+            Assert.DoesNotContain("top", h.T.Output.ToString());
+            Assert.Equal("", scr.Line(1));
+        }
+        finally { Session.ResetForTests(); }
+    }
+
+    [Fact]
+    public void ResizeKeepsAPromptThatIsNotTheRecordedOne()
+    {
+        try
+        {
+            var h = new Harness();
+            Session.ResetForTests();
+            Session.AfterPrompt("something else> ");   // the line doesn't start where this prompt ends
+            h.E.Renderer.Begin(4);
+            h.Type("abc");
+            h.E.SafeRender();
+            h.T.Output.Clear();
+            h.T.Height = 5;
+            h.E.OnResize(80);
+            Assert.DoesNotContain("something else", h.T.Output.ToString());
+        }
+        finally { Session.ResetForTests(); }
+    }
 }
