@@ -1,3 +1,6 @@
+0.3.10
+- tell the terminal where a command's output starts (OSC 133;C): with a prompt that sends 133;A, resizing ghostty while Read-Host or a program (pacman y/n) waited for input cleared the whole screen
+
 0.3.9
 - make the file completion on linux case sensitive
 - redraw the prompt when the window is resized (bleopt canvas_winch_action): in ghostty it went into the scrollback when the window got lower

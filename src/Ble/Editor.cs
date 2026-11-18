@@ -273,6 +273,11 @@ public sealed partial class Editor
             if (Options.Get("keymap_vi_imap_cursor").Length > 0 || Options.Get("keymap_vi_nmap_cursor").Length > 0)
                 Term.Write("\x1b[0 q");
         }
+        // OSC 133;C: the input is over and the command's output starts here. A prompt that sends 133;A (shell
+        // integration) otherwise leaves the terminal thinking the cursor is still at the prompt while a command
+        // runs, and on a resize Ghostty clears the "prompt" for the shell to redraw: with Read-Host or a
+        // program asking y/n, that wiped the whole screen. Terminals that don't know it ignore it.
+        Term.Write("\x1b]133;C\a");
         if (!string.IsNullOrWhiteSpace(Result) && FinalSuffix == null)
         {
             History.Add(Result!, Shell.CurrentDirectory);

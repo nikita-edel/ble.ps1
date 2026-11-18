@@ -391,4 +391,18 @@ public class RenderTests
         }
         finally { Session.ResetForTests(); }
     }
+
+    // the command's output starts after the accepted line (OSC 133;C): a prompt that sends 133;A otherwise leaves
+    // Ghostty thinking a running command (Read-Host, pacman's y/n) is still the prompt, and a resize cleared it all
+    [Fact]
+    public void AcceptLineMarksTheStartOfTheOutput()
+    {
+        var h = new Harness();
+        h.T.Type("echo hi");
+        h.T.Keys("RET");
+        h.E.Renderer.Begin(4);
+        Assert.Equal("echo hi", h.E.ReadLine());
+        var output = h.T.Output.ToString();
+        Assert.EndsWith("\x1b]133;C\a", output.Replace("\x1b[0 q", ""));
+    }
 }
